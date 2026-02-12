@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>openTeleprompter</title>
+  <style>
+    :root {
+      --bg: #1a1a2e;
+      --bg-secondary: #16213e;
+      --bg-card: #0f3460;
+      --accent: #e94560;
+      --accent-hover: #ff6b81;
+      --text: #eaeaea;
+      --text-muted: #8892a4;
+      --border: #2a2a4a;
+      --input-bg: #12122a;
+      --success: #2ecc71;
+      --radius: 8px;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow-y: auto;
+      user-select: none;
+      font-size: 13px;
+    }
+
+    /* Titlebar */
+    .titlebar {
+      -webkit-app-region: drag;
+      background: var(--bg-secondary);
+      padding: 8px 16px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .titlebar h1 {
+      font-size: 14px;
+      font-weight: 600;
+      letter-spacing: 0.5px;
+    }
+
+    .titlebar .logo {
+      width: 20px;
+      height: 20px;
+      background: var(--accent);
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 11px;
+      font-weight: bold;
+    }
+
+    /* Main layout */
+    .container {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    /* Section cards */
+    .section {
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: var(--text-muted);
+      margin-bottom: 8px;
+      font-weight: 600;
+    }
+
+    /* Text area */
+    .script-area {
+      width: 100%;
+      min-height: 180px;
+      max-height: 300px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text);
+      padding: 10px;
+      font-size: 14px;
+      line-height: 1.6;
+      resize: vertical;
+      font-family: inherit;
+      outline: none;
+    }
+
+    .script-area:focus {
+      border-color: var(--accent);
+    }
+
+    .script-area::placeholder {
+      color: var(--text-muted);
+    }
+
+    /* Mode selector */
+    .mode-tabs {
+      display: flex;
+      gap: 4px;
+      background: var(--input-bg);
+      border-radius: var(--radius);
+      padding: 3px;
+    }
+
+    .mode-tab {
+      flex: 1;
+      padding: 7px 8px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 500;
+      transition: all 0.2s;
+      text-align: center;
+    }
+
+    .mode-tab:hover {
+      color: var(--text);
+      background: rgba(255,255,255,0.05);
+    }
+
+    .mode-tab.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    /* Display mode */
+    .display-modes {
+      display: flex;
+      gap: 6px;
+    }
+
+    .display-mode-btn {
+      flex: 1;
+      padding: 8px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      text-align: center;
+      transition: all 0.2s;
+    }
+
+    .display-mode-btn:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    .display-mode-btn.active {
+      border-color: var(--accent);
+      background: rgba(233, 69, 96, 0.15);
+      color: var(--accent);
+    }
+
+    .display-mode-btn .icon {
+      font-size: 18px;
+      display: block;
+      margin-bottom: 3px;
+    }
+
+    /* Controls grid */
+    .controls-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .control-group {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .control-group.full-width {
+      grid-column: 1 / -1;
+    }
+
+    .control-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+
+    .control-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    input[type="range"] {
+      flex: 1;
+      -webkit-appearance: none;
+      height: 4px;
+      background: var(--border);
+      border-radius: 2px;
+      outline: none;
+    }
+
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      width: 14px;
+      height: 14px;
+      background: var(--accent);
+      border-radius: 50%;
+      cursor: pointer;
+    }
+
+    .range-value {
+      font-size: 11px;
+      color: var(--accent);
+      min-width: 30px;
+      text-align: right;
+      font-weight: 600;
+    }
+
+    select {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text);
+      padding: 6px 8px;
+      font-size: 12px;
+      outline: none;
+      cursor: pointer;
+      width: 100%;
+    }
+
+    select:focus {
+      border-color: var(--accent);
+    }
+
+    /* Color picker row */
+    .color-options {
+      display: flex;
+      gap: 6px;
+    }
+
+    .color-swatch {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .color-swatch:hover,
+    .color-swatch.active {
+      border-color: white;
+      transform: scale(1.15);
+    }
+
+    /* Action buttons */
+    .actions {
+      display: flex;
+      gap: 8px;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 10px 16px;
+      border: none;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      background: var(--accent-hover);
+    }
+
+    .btn-secondary {
+      background: var(--input-bg);
+      color: var(--text);
+      border: 1px solid var(--border);
+    }
+
+    .btn-secondary:hover {
+      border-color: var(--accent);
+    }
+
+    .btn-stop {
+      background: #c0392b;
+      color: white;
+      display: none;
+    }
+
+    .btn-stop:hover {
+      background: #e74c3c;
+    }
+
+    /* File import */
+    .file-row {
+      display: flex;
+      gap: 6px;
+      margin-top: 6px;
+    }
+
+    .file-btn {
+      padding: 5px 10px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 11px;
+      transition: all 0.2s;
+    }
+
+    .file-btn:hover {
+      border-color: var(--accent);
+      color: var(--text);
+    }
+
+    /* Status bar */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 12px;
+      background: var(--bg-secondary);
+      border-top: 1px solid var(--border);
+      font-size: 11px;
+      color: var(--text-muted);
+      position: sticky;
+      bottom: 0;
+    }
+
+    .status-indicator {
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .status-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--text-muted);
+    }
+
+    .status-dot.active {
+      background: var(--success);
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+
+    .word-count {
+      color: var(--text-muted);
+    }
+
+    /* Keyboard shortcuts hint */
+    .shortcuts {
+      font-size: 10px;
+      color: var(--text-muted);
+      text-align: center;
+      padding: 4px;
+    }
+
+    kbd {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 3px;
+      padding: 1px 4px;
+      font-size: 10px;
+      font-family: inherit;
+    }
+  </style>
+</head>
+<body>
+  <div class="titlebar">
+    <div class="logo">oT</div>
+    <h1>openTeleprompter</h1>
+  </div>
+
+  <div class="container">
+    <!-- Script Input -->
+    <div class="section">
+      <div class="section-title">Script</div>
+      <textarea class="script-area" id="scriptText" placeholder="Paste or type your script here..."></textarea>
+      <div class="file-row">
+        <button class="file-btn" id="importBtn">Import .txt</button>
+        <button class="file-btn" id="clearBtn">Clear</button>
+      </div>
+    </div>
+
+    <!-- Guidance Mode -->
+    <div class="section">
+      <div class="section-title">Guidance Mode</div>
+      <div class="mode-tabs">
+        <button class="mode-tab active" data-mode="word-tracking">Word Tracking</button>
+        <button class="mode-tab" data-mode="classic">Classic Scroll</button>
+        <button class="mode-tab" data-mode="voice">Voice Scroll</button>
+      </div>
+    </div>
+
+    <!-- Display Mode -->
+    <div class="section">
+      <div class="section-title">Display Mode</div>
+      <div class="display-modes">
+        <button class="display-mode-btn active" data-display="floating">
+          <span class="icon">◻</span>
+          Floating
+        </button>
+        <button class="display-mode-btn" data-display="pinned">
+          <span class="icon">▬</span>
+          Pinned Top
+        </button>
+        <button class="display-mode-btn" data-display="fullscreen">
+          <span class="icon">⛶</span>
+          Fullscreen
+        </button>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="section">
+      <div class="section-title">Settings</div>
+      <div class="controls-grid">
+        <div class="control-group">
+          <span class="control-label">Speed (wps)</span>
+          <div class="control-row">
+            <input type="range" id="speed" min="0.5" max="8" step="0.5" value="2">
+            <span class="range-value" id="speedVal">2.0</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">Font Size</span>
+          <div class="control-row">
+            <input type="range" id="fontSize" min="14" max="48" step="1" value="22">
+            <span class="range-value" id="fontSizeVal">22</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">Opacity</span>
+          <div class="control-row">
+            <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.85">
+            <span class="range-value" id="opacityVal">85%</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">Width (px)</span>
+          <div class="control-row">
+            <input type="range" id="overlayWidth" min="280" max="800" step="10" value="480">
+            <span class="range-value" id="widthVal">480</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">Height (px)</span>
+          <div class="control-row">
+            <input type="range" id="overlayHeight" min="80" max="500" step="10" value="200">
+            <span class="range-value" id="heightVal">200</span>
+          </div>
+        </div>
+
+        <div class="control-group">
+          <span class="control-label">Font</span>
+          <select id="fontFamily">
+            <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">System</option>
+            <option value="'Georgia', serif">Georgia</option>
+            <option value="'Courier New', monospace">Courier</option>
+            <option value="'Arial', sans-serif">Arial</option>
+            <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
+          </select>
+        </div>
+
+        <div class="control-group full-width">
+          <span class="control-label">Highlight Color</span>
+          <div class="color-options">
+            <div class="color-swatch active" data-color="#e94560" style="background:#e94560"></div>
+            <div class="color-swatch" data-color="#f39c12" style="background:#f39c12"></div>
+            <div class="color-swatch" data-color="#2ecc71" style="background:#2ecc71"></div>
+            <div class="color-swatch" data-color="#3498db" style="background:#3498db"></div>
+            <div class="color-swatch" data-color="#9b59b6" style="background:#9b59b6"></div>
+            <div class="color-swatch" data-color="#ffffff" style="background:#ffffff"></div>
+          </div>
+        </div>
+
+        <div class="control-group full-width">
+          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
+            <input type="checkbox" id="mirrorFlip">
+            <span class="control-label" style="margin:0">Mirror / Flip (for prompter rigs)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <!-- Action buttons -->
+    <div class="actions">
+      <button class="btn btn-primary" id="startBtn">▶ Start</button>
+      <button class="btn btn-stop" id="stopBtn">■ Stop</button>
+      <button class="btn btn-secondary" id="pauseBtn" style="display:none">⏸ Pause</button>
+    </div>
+
+    <div class="shortcuts">
+      <kbd>Ctrl+Shift+Space</kbd> Pause/Resume &nbsp; <kbd>Esc</kbd> Close Overlay
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-indicator">
+      <div class="status-dot" id="statusDot"></div>
+      <span id="statusText">Ready</span>
+    </div>
+    <span class="word-count" id="wordCount">0 words</span>
+  </div>
+
+  <script>
+    const { ipcRenderer, dialog } = require('electron');
+    const fs = require('fs');
+
+    // State
+    let currentMode = 'word-tracking';
+    let currentDisplay = 'floating';
+    let isRunning = false;
+    let highlightColor = '#e94560';
+
+    // Elements
+    const scriptText = document.getElementById('scriptText');
+    const speedSlider = document.getElementById('speed');
+    const fontSizeSlider = document.getElementById('fontSize');
+    const opacitySlider = document.getElementById('opacity');
+    const widthSlider = document.getElementById('overlayWidth');
+    const heightSlider = document.getElementById('overlayHeight');
+    const fontSelect = document.getElementById('fontFamily');
+    const mirrorCheck = document.getElementById('mirrorFlip');
+    const startBtn = document.getElementById('startBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const statusDot = document.getElementById('statusDot');
+    const statusText = document.getElementById('statusText');
+    const wordCount = document.getElementById('wordCount');
+
+    // Mode tabs
+    document.querySelectorAll('.mode-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentMode = tab.dataset.mode;
+        updateRunningSettings();
+      });
+    });
+
+    // Display mode
+    document.querySelectorAll('.display-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.display-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentDisplay = btn.dataset.display;
+      });
+    });
+
+    // Color swatches
+    document.querySelectorAll('.color-swatch').forEach(swatch => {
+      swatch.addEventListener('click', () => {
+        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+        swatch.classList.add('active');
+        highlightColor = swatch.dataset.color;
+        updateRunningSettings();
+      });
+    });
+
+    // Sliders
+    function bindSlider(slider, display, formatter) {
+      slider.addEventListener('input', () => {
+        display.textContent = formatter(slider.value);
+        updateRunningSettings();
+      });
+    }
+
+    bindSlider(speedSlider, document.getElementById('speedVal'), v => parseFloat(v).toFixed(1));
+    bindSlider(fontSizeSlider, document.getElementById('fontSizeVal'), v => v);
+    bindSlider(opacitySlider, document.getElementById('opacityVal'), v => Math.round(v * 100) + '%');
+    bindSlider(widthSlider, document.getElementById('widthVal'), v => v);
+    bindSlider(heightSlider, document.getElementById('heightVal'), v => v);
+
+    // Word count
+    scriptText.addEventListener('input', () => {
+      const words = scriptText.value.trim().split(/\s+/).filter(w => w.length > 0);
+      wordCount.textContent = words.length + ' words';
+    });
+
+    // Import file
+    document.getElementById('importBtn').addEventListener('click', () => {
+      const { dialog } = require('electron').remote || require('@electron/remote') || {};
+      // Fallback: use input element
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.txt,.md,.text';
+      input.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+          const reader = new FileReader();
+          reader.onload = (ev) => {
+            scriptText.value = ev.target.result;
+            scriptText.dispatchEvent(new Event('input'));
+          };
+          reader.readAsText(file);
+        }
+      });
+      input.click();
+    });
+
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      scriptText.value = '';
+      scriptText.dispatchEvent(new Event('input'));
+    });
+
+    // Gather current settings
+    function getSettings() {
+      return {
+        mode: currentMode,
+        display: currentDisplay,
+        speed: parseFloat(speedSlider.value),
+        fontSize: parseInt(fontSizeSlider.value),
+        opacity: parseFloat(opacitySlider.value),
+        width: parseInt(widthSlider.value),
+        height: parseInt(heightSlider.value),
+        fontFamily: fontSelect.value,
+        highlightColor: highlightColor,
+        mirror: mirrorCheck.checked,
+        text: scriptText.value,
+      };
+    }
+
+    function updateRunningSettings() {
+      if (isRunning) {
+        ipcRenderer.send('update-settings', getSettings());
+      }
+    }
+
+    // Start
+    startBtn.addEventListener('click', () => {
+      const text = scriptText.value.trim();
+      if (!text) {
+        scriptText.focus();
+        scriptText.placeholder = '⚠ Please enter a script first...';
+        return;
+      }
+
+      const settings = getSettings();
+
+      ipcRenderer.send('open-prompter', {
+        mode: currentDisplay,
+        width: settings.width,
+        height: settings.height,
+        clickThrough: false,
+      });
+
+      // Slight delay to let window open, then send content
+      setTimeout(() => {
+        ipcRenderer.send('update-prompter', settings);
+      }, 500);
+
+      isRunning = true;
+      startBtn.style.display = 'none';
+      stopBtn.style.display = 'flex';
+      pauseBtn.style.display = 'flex';
+      statusDot.classList.add('active');
+      statusText.textContent = 'Running - ' + currentMode.replace('-', ' ');
+    });
+
+    // Stop
+    stopBtn.addEventListener('click', () => {
+      ipcRenderer.send('close-prompter');
+      resetUI();
+    });
+
+    // Pause
+    pauseBtn.addEventListener('click', () => {
+      ipcRenderer.send('scroll-command', 'toggle-pause');
+      if (pauseBtn.textContent.includes('Pause')) {
+        pauseBtn.innerHTML = '▶ Resume';
+        statusText.textContent = 'Paused';
+      } else {
+        pauseBtn.innerHTML = '⏸ Pause';
+        statusText.textContent = 'Running - ' + currentMode.replace('-', ' ');
+      }
+    });
+
+    function resetUI() {
+      isRunning = false;
+      startBtn.style.display = 'flex';
+      stopBtn.style.display = 'none';
+      pauseBtn.style.display = 'none';
+      pauseBtn.innerHTML = '⏸ Pause';
+      statusDot.classList.remove('active');
+      statusText.textContent = 'Ready';
+    }
+
+    // Listen for prompter closed
+    ipcRenderer.on('prompter-closed', resetUI);
+
+    // Settings changes while running
+    fontSelect.addEventListener('change', updateRunningSettings);
+    mirrorCheck.addEventListener('change', updateRunningSettings);
+  </script>
+</body>
+</html>
