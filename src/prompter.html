@@ -1,0 +1,580 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Prompter Overlay</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background: transparent;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    }
+
+    /* Overlay container */
+    #overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(10, 10, 30, 0.85);
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Drag handle */
+    #dragHandle {
+      -webkit-app-region: drag;
+      height: 24px;
+      min-height: 24px;
+      background: rgba(255, 255, 255, 0.05);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: grab;
+    }
+
+    #dragHandle .grip {
+      width: 32px;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.2);
+      border-radius: 2px;
+    }
+
+    /* Content area */
+    #content {
+      flex: 1;
+      overflow: hidden;
+      padding: 12px 20px;
+      position: relative;
+    }
+
+    #textContainer {
+      transition: transform 0.1s linear;
+    }
+
+    /* Text styling */
+    .word {
+      display: inline;
+      color: rgba(255, 255, 255, 0.5);
+      transition: color 0.15s, text-shadow 0.15s;
+      cursor: pointer;
+      line-height: 1.5;
+    }
+
+    .word:hover {
+      color: rgba(255, 255, 255, 0.8);
+    }
+
+    .word.active {
+      color: #ffffff;
+      text-shadow: 0 0 8px currentColor;
+    }
+
+    .word.spoken {
+      color: rgba(255, 255, 255, 0.35);
+    }
+
+    /* Gradient masks for smooth edges */
+    #content::before,
+    #content::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      right: 0;
+      height: 20px;
+      pointer-events: none;
+      z-index: 10;
+    }
+
+    #content::before {
+      top: 0;
+      background: linear-gradient(to bottom, rgba(10, 10, 30, 0.85), transparent);
+    }
+
+    #content::after {
+      bottom: 0;
+      background: linear-gradient(to top, rgba(10, 10, 30, 0.85), transparent);
+    }
+
+    /* Waveform indicator */
+    #waveform {
+      height: 20px;
+      min-height: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 2px;
+      padding: 0 20px;
+    }
+
+    .wave-bar {
+      width: 3px;
+      height: 4px;
+      background: rgba(255, 255, 255, 0.3);
+      border-radius: 1px;
+      transition: height 0.1s;
+    }
+
+    .wave-bar.active {
+      animation: waveAnim 0.5s ease-in-out infinite alternate;
+    }
+
+    @keyframes waveAnim {
+      from { height: 3px; }
+      to { height: 14px; }
+    }
+
+    /* Progress bar */
+    #progressBar {
+      height: 2px;
+      min-height: 2px;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    #progressFill {
+      height: 100%;
+      width: 0%;
+      background: #e94560;
+      transition: width 0.3s;
+    }
+
+    /* Mirror mode */
+    body.mirror #content {
+      transform: scaleX(-1);
+    }
+  </style>
+</head>
+<body>
+  <div id="overlay">
+    <div id="dragHandle"><div class="grip"></div></div>
+    <div id="content">
+      <div id="textContainer"></div>
+    </div>
+    <div id="waveform"></div>
+    <div id="progressBar"><div id="progressFill"></div></div>
+  </div>
+
+  <script>
+    const { ipcRenderer } = require('electron');
+
+    // State
+    let words = [];
+    let wordElements = [];
+    let currentWordIndex = 0;
+    let isPaused = false;
+    let scrollInterval = null;
+    let settings = {};
+    let recognition = null;
+    let isListening = false;
+
+    // Elements
+    const textContainer = document.getElementById('textContainer');
+    const progressFill = document.getElementById('progressFill');
+    const waveform = document.getElementById('waveform');
+    const overlay = document.getElementById('overlay');
+
+    // Create waveform bars
+    for (let i = 0; i < 20; i++) {
+      const bar = document.createElement('div');
+      bar.className = 'wave-bar';
+      bar.style.animationDelay = (i * 0.05) + 's';
+      waveform.appendChild(bar);
+    }
+
+    // Receive content and settings from control window
+    ipcRenderer.on('update-content', (event, data) => {
+      settings = data;
+      initializeText(data.text);
+      applyVisualSettings(data);
+      startMode(data.mode);
+    });
+
+    ipcRenderer.on('apply-settings', (event, data) => {
+      settings = data;
+      applyVisualSettings(data);
+      // Re-apply mode if changed
+    });
+
+    ipcRenderer.on('toggle-pause', () => {
+      togglePause();
+    });
+
+    ipcRenderer.on('scroll-command', (event, cmd) => {
+      if (cmd === 'toggle-pause') togglePause();
+    });
+
+    function initializeText(text) {
+      textContainer.innerHTML = '';
+      words = text.split(/\s+/).filter(w => w.length > 0);
+      wordElements = [];
+      currentWordIndex = 0;
+
+      words.forEach((word, i) => {
+        const span = document.createElement('span');
+        span.className = 'word';
+        span.textContent = word + ' ';
+        span.dataset.index = i;
+
+        // Click to jump
+        span.addEventListener('click', () => {
+          jumpToWord(i);
+        });
+
+        textContainer.appendChild(span);
+        wordElements.push(span);
+      });
+    }
+
+    function applyVisualSettings(s) {
+      // Font
+      textContainer.style.fontFamily = s.fontFamily;
+      textContainer.style.fontSize = s.fontSize + 'px';
+
+      // Highlight color
+      document.documentElement.style.setProperty('color', s.highlightColor);
+      progressFill.style.background = s.highlightColor;
+
+      // Opacity
+      overlay.style.background = `rgba(10, 10, 30, ${s.opacity})`;
+
+      // Mirror
+      if (s.mirror) {
+        document.body.classList.add('mirror');
+      } else {
+        document.body.classList.remove('mirror');
+      }
+
+      // Update active word color
+      wordElements.forEach(el => {
+        if (el.classList.contains('active')) {
+          el.style.textShadow = `0 0 8px ${s.highlightColor}`;
+        }
+      });
+    }
+
+    function jumpToWord(index) {
+      if (index < 0 || index >= wordElements.length) return;
+
+      // Reset previous
+      wordElements.forEach((el, i) => {
+        el.classList.remove('active');
+        if (i < index) {
+          el.classList.add('spoken');
+        } else {
+          el.classList.remove('spoken');
+        }
+      });
+
+      currentWordIndex = index;
+      highlightWord(index);
+    }
+
+    function highlightWord(index) {
+      if (index >= wordElements.length) {
+        // End reached
+        stopAllModes();
+        return;
+      }
+
+      // Mark previous as spoken
+      if (index > 0) {
+        wordElements[index - 1].classList.remove('active');
+        wordElements[index - 1].classList.add('spoken');
+        wordElements[index - 1].style.textShadow = 'none';
+      }
+
+      const el = wordElements[index];
+      el.classList.add('active');
+      el.classList.remove('spoken');
+      el.style.textShadow = `0 0 8px ${settings.highlightColor || '#e94560'}`;
+
+      // Scroll to keep active word visible
+      scrollToWord(el);
+
+      // Progress
+      progressFill.style.width = ((index / wordElements.length) * 100) + '%';
+      currentWordIndex = index;
+    }
+
+    function scrollToWord(el) {
+      const container = document.getElementById('content');
+      const containerRect = container.getBoundingClientRect();
+      const elRect = el.getBoundingClientRect();
+
+      // Keep active word in the upper third
+      const targetY = containerRect.top + containerRect.height * 0.3;
+      const diff = elRect.top - targetY;
+
+      if (Math.abs(diff) > 5) {
+        const currentTransform = parseFloat(textContainer.style.transform?.replace('translateY(', '') || '0');
+        textContainer.style.transform = `translateY(${currentTransform - diff}px)`;
+      }
+    }
+
+    // ==========================================
+    // MODE: Classic Auto-Scroll
+    // ==========================================
+    function startClassicMode() {
+      const wps = settings.speed || 2;
+      const intervalMs = 1000 / wps;
+
+      scrollInterval = setInterval(() => {
+        if (!isPaused) {
+          highlightWord(currentWordIndex);
+          currentWordIndex++;
+
+          if (currentWordIndex >= wordElements.length) {
+            clearInterval(scrollInterval);
+          }
+        }
+      }, intervalMs);
+    }
+
+    // ==========================================
+    // MODE: Word Tracking (Speech Recognition)
+    // ==========================================
+    function startWordTracking() {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        console.error('Speech recognition not available');
+        // Fallback to classic mode
+        startClassicMode();
+        return;
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US';
+
+      let lastMatchedIndex = -1;
+
+      recognition.onresult = (event) => {
+        if (isPaused) return;
+
+        setWaveformActive(true);
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript.toLowerCase().trim();
+          const spokenWords = transcript.split(/\s+/);
+
+          // Try to match spoken words with script words
+          for (const spoken of spokenWords) {
+            const cleanSpoken = spoken.replace(/[^a-zA-ZäöüÄÖÜß0-9]/g, '');
+            if (cleanSpoken.length < 2) continue;
+
+            // Search forward from last matched position
+            for (let j = lastMatchedIndex + 1; j < Math.min(lastMatchedIndex + 15, words.length); j++) {
+              const cleanWord = words[j].toLowerCase().replace(/[^a-zA-ZäöüÄÖÜß0-9]/g, '');
+              if (cleanWord === cleanSpoken || cleanWord.startsWith(cleanSpoken) || cleanSpoken.startsWith(cleanWord)) {
+                // Match found - highlight up to this word
+                for (let k = currentWordIndex; k <= j; k++) {
+                  highlightWord(k);
+                }
+                currentWordIndex = j + 1;
+                lastMatchedIndex = j;
+                break;
+              }
+            }
+          }
+        }
+      };
+
+      recognition.onspeechend = () => {
+        setWaveformActive(false);
+      };
+
+      recognition.onend = () => {
+        // Restart recognition if still running
+        if (isListening && !isPaused) {
+          try {
+            recognition.start();
+          } catch (e) {}
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'not-allowed') {
+          console.error('Microphone access denied');
+          startClassicMode(); // Fallback
+        }
+      };
+
+      try {
+        recognition.start();
+        isListening = true;
+        setWaveformActive(false);
+      } catch (e) {
+        startClassicMode();
+      }
+    }
+
+    // ==========================================
+    // MODE: Voice-Activated Scroll
+    // ==========================================
+    function startVoiceScroll() {
+      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
+        startClassicMode();
+        return;
+      }
+
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = navigator.language || 'en-US';
+
+      let scrolling = false;
+      let voiceScrollInterval = null;
+
+      const wps = settings.speed || 2;
+      const intervalMs = 1000 / wps;
+
+      recognition.onresult = () => {
+        if (isPaused) return;
+
+        setWaveformActive(true);
+
+        // Start scrolling on voice
+        if (!scrolling) {
+          scrolling = true;
+          voiceScrollInterval = setInterval(() => {
+            if (!isPaused && scrolling) {
+              highlightWord(currentWordIndex);
+              currentWordIndex++;
+              if (currentWordIndex >= wordElements.length) {
+                clearInterval(voiceScrollInterval);
+              }
+            }
+          }, intervalMs);
+        }
+      };
+
+      recognition.onspeechend = () => {
+        // Pause scrolling on silence
+        scrolling = false;
+        if (voiceScrollInterval) {
+          clearInterval(voiceScrollInterval);
+          voiceScrollInterval = null;
+        }
+        setWaveformActive(false);
+      };
+
+      recognition.onend = () => {
+        if (isListening && !isPaused) {
+          try {
+            recognition.start();
+          } catch (e) {}
+        }
+      };
+
+      recognition.onerror = (event) => {
+        if (event.error === 'not-allowed') {
+          startClassicMode();
+        }
+      };
+
+      try {
+        recognition.start();
+        isListening = true;
+      } catch (e) {
+        startClassicMode();
+      }
+    }
+
+    // ==========================================
+    // Mode control
+    // ==========================================
+    function startMode(mode) {
+      stopAllModes();
+      isPaused = false;
+
+      switch (mode) {
+        case 'word-tracking':
+          startWordTracking();
+          break;
+        case 'classic':
+          startClassicMode();
+          break;
+        case 'voice':
+          startVoiceScroll();
+          break;
+        default:
+          startClassicMode();
+      }
+    }
+
+    function stopAllModes() {
+      if (scrollInterval) {
+        clearInterval(scrollInterval);
+        scrollInterval = null;
+      }
+      if (recognition) {
+        isListening = false;
+        try { recognition.stop(); } catch (e) {}
+        recognition = null;
+      }
+      setWaveformActive(false);
+    }
+
+    function togglePause() {
+      isPaused = !isPaused;
+      if (isPaused) {
+        if (recognition) {
+          isListening = false;
+          try { recognition.stop(); } catch (e) {}
+        }
+        setWaveformActive(false);
+      } else {
+        if (settings.mode === 'word-tracking' || settings.mode === 'voice') {
+          if (recognition) {
+            isListening = true;
+            try { recognition.start(); } catch (e) {}
+          }
+        }
+      }
+    }
+
+    function setWaveformActive(active) {
+      document.querySelectorAll('.wave-bar').forEach(bar => {
+        if (active) {
+          bar.classList.add('active');
+        } else {
+          bar.classList.remove('active');
+        }
+      });
+    }
+
+    // Keyboard shortcuts in overlay
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        e.preventDefault();
+        togglePause();
+      }
+      if (e.code === 'Escape') {
+        window.close();
+      }
+      if (e.code === 'ArrowUp') {
+        jumpToWord(Math.max(0, currentWordIndex - 5));
+      }
+      if (e.code === 'ArrowDown') {
+        jumpToWord(Math.min(wordElements.length - 1, currentWordIndex + 5));
+      }
+    });
+  </script>
+</body>
+</html>
