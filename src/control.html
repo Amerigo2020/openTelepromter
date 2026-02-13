@@ -15,15 +15,10 @@
       --border: #2a2a4a;
       --input-bg: #12122a;
       --success: #2ecc71;
+      --warning: #f39c12;
       --radius: 8px;
     }
-
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg);
@@ -32,7 +27,6 @@
       user-select: none;
       font-size: 13px;
     }
-
     /* Titlebar */
     .titlebar {
       -webkit-app-region: drag;
@@ -42,32 +36,101 @@
       align-items: center;
       gap: 10px;
       border-bottom: 1px solid var(--border);
+      position: sticky;
+      top: 0;
+      z-index: 100;
     }
-
-    .titlebar h1 {
-      font-size: 14px;
-      font-weight: 600;
-      letter-spacing: 0.5px;
-    }
-
+    .titlebar h1 { font-size: 14px; font-weight: 600; letter-spacing: 0.5px; }
     .titlebar .logo {
-      width: 20px;
-      height: 20px;
+      width: 22px; height: 22px;
       background: var(--accent);
-      border-radius: 4px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 11px;
-      font-weight: bold;
+      border-radius: 5px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 10px; font-weight: bold; color: white;
     }
+    .titlebar-actions {
+      margin-left: auto;
+      display: flex; gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+    .titlebar-btn {
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      color: var(--text-muted);
+      border-radius: 4px;
+      padding: 3px 8px;
+      font-size: 10px;
+      cursor: pointer;
+    }
+    .titlebar-btn:hover { border-color: var(--accent); color: var(--text); }
+    .unsaved-dot {
+      display: none;
+      width: 6px; height: 6px;
+      background: var(--warning);
+      border-radius: 50%;
+      margin-left: 4px;
+    }
+    .unsaved-dot.visible { display: inline-block; }
 
     /* Main layout */
-    .container {
-      padding: 12px;
+    .main-layout { display: flex; height: calc(100vh - 37px); }
+
+    /* Page sidebar */
+    .page-sidebar {
+      width: 48px;
+      min-width: 48px;
+      background: var(--bg-secondary);
+      border-right: 1px solid var(--border);
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      align-items: center;
+      padding: 8px 0;
+      gap: 4px;
+      overflow-y: auto;
+    }
+    .page-btn {
+      width: 34px; height: 34px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 12px; font-weight: 600;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      position: relative;
+      transition: all 0.15s;
+    }
+    .page-btn:hover { border-color: var(--accent); color: var(--text); }
+    .page-btn.active { background: var(--accent); color: white; border-color: var(--accent); }
+    .page-btn .read-check {
+      position: absolute; top: -3px; right: -3px;
+      width: 12px; height: 12px;
+      background: var(--success);
+      border-radius: 50%;
+      font-size: 7px;
+      display: none;
+      align-items: center; justify-content: center; color: white;
+    }
+    .page-btn .read-check.visible { display: flex; }
+    .page-add-btn {
+      width: 34px; height: 34px;
+      background: transparent;
+      border: 1px dashed var(--border);
+      border-radius: 6px;
+      color: var(--text-muted);
+      font-size: 16px;
+      cursor: pointer;
+    }
+    .page-add-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Container */
+    .container {
+      flex: 1;
+      padding: 10px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      overflow-y: auto;
     }
 
     /* Section cards */
@@ -75,23 +138,36 @@
       background: var(--bg-secondary);
       border: 1px solid var(--border);
       border-radius: var(--radius);
-      padding: 12px;
+      padding: 10px;
     }
-
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
     .section-title {
-      font-size: 11px;
+      font-size: 10px;
       text-transform: uppercase;
       letter-spacing: 1px;
       color: var(--text-muted);
-      margin-bottom: 8px;
       font-weight: 600;
     }
+    .section-toggle {
+      font-size: 10px;
+      color: var(--text-muted);
+      background: none;
+      border: none;
+      cursor: pointer;
+    }
+    .section-toggle:hover { color: var(--text); }
+    .section.collapsed .section-body { display: none; }
 
     /* Text area */
     .script-area {
       width: 100%;
-      min-height: 180px;
-      max-height: 300px;
+      min-height: 150px;
+      max-height: 250px;
       background: var(--input-bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
@@ -103,27 +179,52 @@
       font-family: inherit;
       outline: none;
     }
+    .script-area:focus { border-color: var(--accent); }
+    .script-area::placeholder { color: var(--text-muted); }
 
-    .script-area:focus {
-      border-color: var(--accent);
-    }
-
-    .script-area::placeholder {
+    /* Drag drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border);
+      border-radius: var(--radius);
+      padding: 16px;
+      text-align: center;
       color: var(--text-muted);
+      font-size: 12px;
+      margin-top: 6px;
+      transition: all 0.2s;
+      cursor: pointer;
     }
+    .drop-zone.dragover {
+      border-color: var(--accent);
+      background: rgba(233, 69, 96, 0.1);
+      color: var(--accent);
+    }
+    .drop-zone .drop-icon { font-size: 20px; margin-bottom: 4px; }
 
-    /* Mode selector */
+    /* File row */
+    .file-row { display: flex; gap: 4px; margin-top: 6px; flex-wrap: wrap; }
+    .file-btn {
+      padding: 4px 8px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 10px;
+      transition: all 0.2s;
+    }
+    .file-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    /* Mode tabs */
     .mode-tabs {
-      display: flex;
-      gap: 4px;
+      display: flex; gap: 3px;
       background: var(--input-bg);
       border-radius: var(--radius);
-      padding: 3px;
+      padding: 2px;
     }
-
     .mode-tab {
       flex: 1;
-      padding: 7px 8px;
+      padding: 6px 6px;
       border: none;
       background: transparent;
       color: var(--text-muted);
@@ -134,216 +235,161 @@
       transition: all 0.2s;
       text-align: center;
     }
+    .mode-tab:hover { color: var(--text); background: rgba(255,255,255,0.05); }
+    .mode-tab.active { background: var(--accent); color: white; }
 
-    .mode-tab:hover {
-      color: var(--text);
-      background: rgba(255,255,255,0.05);
-    }
-
-    .mode-tab.active {
-      background: var(--accent);
-      color: white;
-    }
-
-    /* Display mode */
-    .display-modes {
-      display: flex;
-      gap: 6px;
-    }
-
+    /* Display modes */
+    .display-modes { display: flex; gap: 5px; }
     .display-mode-btn {
       flex: 1;
-      padding: 8px;
+      padding: 6px;
       background: var(--input-bg);
       border: 1px solid var(--border);
       border-radius: var(--radius);
       color: var(--text-muted);
       cursor: pointer;
-      font-size: 11px;
+      font-size: 10px;
       text-align: center;
       transition: all 0.2s;
     }
-
-    .display-mode-btn:hover {
-      border-color: var(--accent);
-      color: var(--text);
-    }
-
+    .display-mode-btn:hover { border-color: var(--accent); color: var(--text); }
     .display-mode-btn.active {
       border-color: var(--accent);
       background: rgba(233, 69, 96, 0.15);
       color: var(--accent);
     }
-
-    .display-mode-btn .icon {
-      font-size: 18px;
-      display: block;
-      margin-bottom: 3px;
-    }
+    .display-mode-btn .icon { font-size: 16px; display: block; margin-bottom: 2px; }
 
     /* Controls grid */
     .controls-grid {
       display: grid;
       grid-template-columns: 1fr 1fr;
-      gap: 8px;
+      gap: 6px;
     }
-
-    .control-group {
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-
-    .control-group.full-width {
-      grid-column: 1 / -1;
-    }
-
-    .control-label {
-      font-size: 11px;
-      color: var(--text-muted);
-      font-weight: 500;
-    }
-
-    .control-row {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    .control-group { display: flex; flex-direction: column; gap: 3px; }
+    .control-group.full-width { grid-column: 1 / -1; }
+    .control-label { font-size: 10px; color: var(--text-muted); font-weight: 500; }
+    .control-row { display: flex; align-items: center; gap: 6px; }
 
     input[type="range"] {
-      flex: 1;
-      -webkit-appearance: none;
-      height: 4px;
-      background: var(--border);
-      border-radius: 2px;
-      outline: none;
+      flex: 1; -webkit-appearance: none;
+      height: 4px; background: var(--border);
+      border-radius: 2px; outline: none;
     }
-
     input[type="range"]::-webkit-slider-thumb {
       -webkit-appearance: none;
-      width: 14px;
-      height: 14px;
+      width: 12px; height: 12px;
       background: var(--accent);
       border-radius: 50%;
       cursor: pointer;
     }
-
     .range-value {
-      font-size: 11px;
-      color: var(--accent);
-      min-width: 30px;
-      text-align: right;
-      font-weight: 600;
+      font-size: 10px; color: var(--accent);
+      min-width: 28px; text-align: right; font-weight: 600;
     }
 
     select {
       background: var(--input-bg);
       border: 1px solid var(--border);
-      border-radius: 6px;
+      border-radius: 5px;
       color: var(--text);
-      padding: 6px 8px;
-      font-size: 12px;
-      outline: none;
-      cursor: pointer;
+      padding: 5px 6px;
+      font-size: 11px;
+      outline: none; cursor: pointer;
       width: 100%;
     }
+    select:focus { border-color: var(--accent); }
 
-    select:focus {
-      border-color: var(--accent);
-    }
-
-    /* Color picker row */
-    .color-options {
-      display: flex;
-      gap: 6px;
-    }
-
+    /* Color options */
+    .color-options { display: flex; gap: 5px; }
     .color-swatch {
-      width: 22px;
-      height: 22px;
+      width: 20px; height: 20px;
       border-radius: 50%;
       border: 2px solid transparent;
       cursor: pointer;
       transition: all 0.2s;
     }
-
-    .color-swatch:hover,
-    .color-swatch.active {
+    .color-swatch:hover, .color-swatch.active {
       border-color: white;
       transform: scale(1.15);
     }
 
-    /* Action buttons */
-    .actions {
-      display: flex;
-      gap: 8px;
+    /* Checkbox label */
+    .check-label {
+      display: flex; align-items: center; gap: 6px;
+      cursor: pointer; font-size: 11px; color: var(--text-muted);
+    }
+    .check-label input { accent-color: var(--accent); }
+
+    /* Remote panel */
+    .remote-panel {
+      display: none;
+      margin-top: 6px;
+      padding: 8px;
+      background: var(--input-bg);
+      border-radius: var(--radius);
+    }
+    .remote-panel.visible { display: block; }
+    .remote-url {
+      display: flex; align-items: center; gap: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      border-radius: 5px;
+      padding: 6px 8px;
+      font-family: monospace;
+      font-size: 11px;
+      color: var(--accent);
+      word-break: break-all;
+    }
+    .copy-btn {
+      background: var(--accent);
+      border: none;
+      color: white;
+      padding: 3px 8px;
+      border-radius: 4px;
+      font-size: 10px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    #qrCanvas {
+      display: block;
+      margin: 8px auto 0;
+      border-radius: 6px;
+      background: white;
+      padding: 4px;
     }
 
+    /* Actions */
+    .actions { display: flex; gap: 6px; }
     .btn {
       flex: 1;
-      padding: 10px 16px;
+      padding: 9px 14px;
       border: none;
       border-radius: var(--radius);
-      font-size: 13px;
+      font-size: 12px;
       font-weight: 600;
       cursor: pointer;
       transition: all 0.2s;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
     }
-
-    .btn-primary {
-      background: var(--accent);
-      color: white;
-    }
-
-    .btn-primary:hover {
-      background: var(--accent-hover);
-    }
-
+    .btn-primary { background: var(--accent); color: white; }
+    .btn-primary:hover { background: var(--accent-hover); }
     .btn-secondary {
       background: var(--input-bg);
       color: var(--text);
       border: 1px solid var(--border);
     }
+    .btn-secondary:hover { border-color: var(--accent); }
+    .btn-stop { background: #c0392b; color: white; display: none; }
+    .btn-stop:hover { background: #e74c3c; }
 
-    .btn-secondary:hover {
-      border-color: var(--accent);
-    }
-
-    .btn-stop {
-      background: #c0392b;
-      color: white;
-      display: none;
-    }
-
-    .btn-stop:hover {
-      background: #e74c3c;
-    }
-
-    /* File import */
-    .file-row {
-      display: flex;
-      gap: 6px;
-      margin-top: 6px;
-    }
-
-    .file-btn {
-      padding: 5px 10px;
-      background: var(--input-bg);
-      border: 1px solid var(--border);
-      border-radius: 6px;
-      color: var(--text-muted);
-      cursor: pointer;
-      font-size: 11px;
-      transition: all 0.2s;
-    }
-
-    .file-btn:hover {
-      border-color: var(--accent);
-      color: var(--text);
+    /* Auto next page */
+    .auto-next-row {
+      display: flex; align-items: center; gap: 8px;
+      margin-top: 4px;
     }
 
     /* Status bar */
@@ -351,191 +397,327 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 6px 12px;
+      padding: 5px 10px;
       background: var(--bg-secondary);
       border-top: 1px solid var(--border);
-      font-size: 11px;
+      font-size: 10px;
       color: var(--text-muted);
-      position: sticky;
-      bottom: 0;
     }
-
-    .status-indicator {
-      display: flex;
-      align-items: center;
-      gap: 5px;
-    }
-
+    .status-indicator { display: flex; align-items: center; gap: 4px; }
     .status-dot {
-      width: 6px;
-      height: 6px;
+      width: 6px; height: 6px;
       border-radius: 50%;
       background: var(--text-muted);
     }
-
     .status-dot.active {
       background: var(--success);
       animation: pulse 1.5s infinite;
     }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.5} }
 
-    @keyframes pulse {
-      0%, 100% { opacity: 1; }
-      50% { opacity: 0.5; }
-    }
-
-    .word-count {
-      color: var(--text-muted);
-    }
-
-    /* Keyboard shortcuts hint */
     .shortcuts {
-      font-size: 10px;
+      font-size: 9px;
       color: var(--text-muted);
       text-align: center;
-      padding: 4px;
+      padding: 3px;
     }
-
     kbd {
       background: var(--input-bg);
       border: 1px solid var(--border);
       border-radius: 3px;
-      padding: 1px 4px;
-      font-size: 10px;
+      padding: 1px 3px;
+      font-size: 9px;
       font-family: inherit;
     }
+
+    /* Context menu */
+    .ctx-menu {
+      display: none;
+      position: fixed;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      padding: 4px;
+      z-index: 1000;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+    }
+    .ctx-menu.visible { display: block; }
+    .ctx-item {
+      padding: 6px 12px;
+      font-size: 11px;
+      color: var(--text);
+      cursor: pointer;
+      border-radius: 4px;
+    }
+    .ctx-item:hover { background: var(--accent); color: white; }
+    .ctx-item.disabled { color: var(--text-muted); pointer-events: none; }
   </style>
 </head>
 <body>
   <div class="titlebar">
     <div class="logo">oT</div>
     <h1>openTeleprompter</h1>
+    <span class="unsaved-dot" id="unsavedDot"></span>
+    <div class="titlebar-actions">
+      <button class="titlebar-btn" id="openFileBtn" title="Open (Ctrl+O)">Open</button>
+      <button class="titlebar-btn" id="saveFileBtn" title="Save (Ctrl+S)">Save</button>
+    </div>
   </div>
 
-  <div class="container">
-    <!-- Script Input -->
-    <div class="section">
-      <div class="section-title">Script</div>
-      <textarea class="script-area" id="scriptText" placeholder="Paste or type your script here..."></textarea>
-      <div class="file-row">
-        <button class="file-btn" id="importBtn">Import .txt</button>
-        <button class="file-btn" id="clearBtn">Clear</button>
-      </div>
+  <div class="main-layout">
+    <!-- Page Sidebar -->
+    <div class="page-sidebar" id="pageSidebar">
+      <button class="page-btn active" data-page="0">
+        1
+        <span class="read-check">&#10003;</span>
+      </button>
+      <button class="page-add-btn" id="addPageBtn" title="Add page">+</button>
     </div>
 
-    <!-- Guidance Mode -->
-    <div class="section">
-      <div class="section-title">Guidance Mode</div>
-      <div class="mode-tabs">
-        <button class="mode-tab active" data-mode="word-tracking">Word Tracking</button>
-        <button class="mode-tab" data-mode="classic">Classic Scroll</button>
-        <button class="mode-tab" data-mode="voice">Voice Scroll</button>
+    <div class="container">
+      <!-- Script Input -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Script</span>
+          <span id="pageLabel" style="font-size:10px;color:var(--text-muted)">Page 1/1</span>
+        </div>
+        <div class="section-body">
+          <textarea class="script-area" id="scriptText" placeholder="Paste or type your script here..."></textarea>
+          <div class="drop-zone" id="dropZone">
+            <div class="drop-icon">&#128196;</div>
+            Drop .txt, .pptx or .json files here
+          </div>
+          <div class="file-row">
+            <button class="file-btn" id="importTxtBtn">Import .txt</button>
+            <button class="file-btn" id="importPptxBtn">Import .pptx</button>
+            <button class="file-btn" id="clearBtn">Clear</button>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <!-- Display Mode -->
-    <div class="section">
-      <div class="section-title">Display Mode</div>
-      <div class="display-modes">
-        <button class="display-mode-btn active" data-display="floating">
-          <span class="icon">◻</span>
-          Floating
-        </button>
-        <button class="display-mode-btn" data-display="pinned">
-          <span class="icon">▬</span>
-          Pinned Top
-        </button>
-        <button class="display-mode-btn" data-display="fullscreen">
-          <span class="icon">⛶</span>
-          Fullscreen
-        </button>
+      <!-- Guidance Mode -->
+      <div class="section">
+        <div class="section-title" style="margin-bottom:6px">Guidance Mode</div>
+        <div class="section-body">
+          <div class="mode-tabs">
+            <button class="mode-tab active" data-mode="word-tracking">Word Tracking</button>
+            <button class="mode-tab" data-mode="classic">Classic Scroll</button>
+            <button class="mode-tab" data-mode="voice">Voice Scroll</button>
+          </div>
+          <div style="margin-top:6px">
+            <div class="control-group">
+              <span class="control-label">Speech Language</span>
+              <select id="speechLang">
+                <option value="en-US">English (US)</option>
+                <option value="en-GB">English (UK)</option>
+                <option value="de-DE">Deutsch</option>
+                <option value="fr-FR">Fran&#231;ais</option>
+                <option value="es-ES">Espa&#241;ol</option>
+                <option value="it-IT">Italiano</option>
+                <option value="pt-BR">Portugu&#234;s (BR)</option>
+                <option value="nl-NL">Nederlands</option>
+                <option value="pl-PL">Polski</option>
+                <option value="ru-RU">&#1056;&#1091;&#1089;&#1089;&#1082;&#1080;&#1081;</option>
+                <option value="ja-JP">&#26085;&#26412;&#35486;</option>
+                <option value="ko-KR">&#54620;&#44397;&#50612;</option>
+                <option value="zh-CN">&#20013;&#25991; (&#31616;&#20307;)</option>
+                <option value="zh-TW">&#20013;&#25991; (&#32321;&#39636;)</option>
+                <option value="ar-SA">&#1575;&#1604;&#1593;&#1585;&#1576;&#1610;&#1577;</option>
+                <option value="hi-IN">&#2361;&#2367;&#2344;&#2381;&#2342;&#2368;</option>
+                <option value="tr-TR">T&#252;rk&#231;e</option>
+                <option value="sv-SE">Svenska</option>
+                <option value="da-DK">Dansk</option>
+                <option value="fi-FI">Suomi</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <!-- Settings -->
-    <div class="section">
-      <div class="section-title">Settings</div>
-      <div class="controls-grid">
-        <div class="control-group">
-          <span class="control-label">Speed (wps)</span>
-          <div class="control-row">
-            <input type="range" id="speed" min="0.5" max="8" step="0.5" value="2">
-            <span class="range-value" id="speedVal">2.0</span>
+      <!-- Display Mode -->
+      <div class="section">
+        <div class="section-title" style="margin-bottom:6px">Display Mode</div>
+        <div class="section-body">
+          <div class="display-modes">
+            <button class="display-mode-btn active" data-display="floating">
+              <span class="icon">&#9723;</span>Floating
+            </button>
+            <button class="display-mode-btn" data-display="pinned">
+              <span class="icon">&#9644;</span>Pinned
+            </button>
+            <button class="display-mode-btn" data-display="fullscreen">
+              <span class="icon">&#9974;</span>Full
+            </button>
           </div>
         </div>
+      </div>
 
-        <div class="control-group">
-          <span class="control-label">Font Size</span>
-          <div class="control-row">
-            <input type="range" id="fontSize" min="14" max="48" step="1" value="22">
-            <span class="range-value" id="fontSizeVal">22</span>
+      <!-- Settings -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Settings</span>
+          <button class="section-toggle" id="toggleSettings">&#9660;</button>
+        </div>
+        <div class="section-body" id="settingsBody">
+          <div class="controls-grid">
+            <div class="control-group">
+              <span class="control-label">Speed (wps)</span>
+              <div class="control-row">
+                <input type="range" id="speed" min="0.5" max="8" step="0.5" value="3">
+                <span class="range-value" id="speedVal">3.0</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Font Size</span>
+              <div class="control-row">
+                <input type="range" id="fontSize" min="14" max="48" step="1" value="22">
+                <span class="range-value" id="fontSizeVal">22</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Opacity</span>
+              <div class="control-row">
+                <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.85">
+                <span class="range-value" id="opacityVal">85%</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Width</span>
+              <div class="control-row">
+                <input type="range" id="overlayWidth" min="280" max="800" step="10" value="480">
+                <span class="range-value" id="widthVal">480</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Height</span>
+              <div class="control-row">
+                <input type="range" id="overlayHeight" min="80" max="500" step="10" value="200">
+                <span class="range-value" id="heightVal">200</span>
+              </div>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Font</span>
+              <select id="fontFamily">
+                <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">System</option>
+                <option value="'Georgia', serif">Georgia</option>
+                <option value="'Courier New', monospace">Courier</option>
+                <option value="'Arial', sans-serif">Arial</option>
+                <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
+              </select>
+            </div>
+            <div class="control-group full-width">
+              <span class="control-label">Highlight Color</span>
+              <div class="color-options">
+                <div class="color-swatch" data-color="#ffffff" style="background:#ffffff"></div>
+                <div class="color-swatch" data-color="#f39c12" style="background:#f39c12"></div>
+                <div class="color-swatch" data-color="#2ecc71" style="background:#2ecc71"></div>
+                <div class="color-swatch" data-color="#3498db" style="background:#3498db"></div>
+                <div class="color-swatch active" data-color="#e94560" style="background:#e94560"></div>
+                <div class="color-swatch" data-color="#9b59b6" style="background:#9b59b6"></div>
+              </div>
+            </div>
+            <div class="control-group full-width">
+              <label class="check-label">
+                <input type="checkbox" id="mirrorFlip">
+                Mirror / Flip (prompter rigs)
+              </label>
+            </div>
+            <div class="control-group full-width">
+              <label class="check-label">
+                <input type="checkbox" id="showElapsed" checked>
+                Show elapsed time
+              </label>
+            </div>
+            <div class="control-group full-width">
+              <label class="check-label">
+                <input type="checkbox" id="autoNextPage">
+                Auto next page
+              </label>
+              <div class="auto-next-row" id="autoNextOptions" style="display:none">
+                <span class="control-label">Countdown:</span>
+                <select id="autoNextDelay" style="width:auto">
+                  <option value="3">3 sec</option>
+                  <option value="5">5 sec</option>
+                </select>
+              </div>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div class="control-group">
-          <span class="control-label">Opacity</span>
-          <div class="control-row">
-            <input type="range" id="opacity" min="0.2" max="1" step="0.05" value="0.85">
-            <span class="range-value" id="opacityVal">85%</span>
+      <!-- External Display -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">External Display</span>
+          <button class="section-toggle" id="toggleExternal">&#9660;</button>
+        </div>
+        <div class="section-body" id="externalBody">
+          <div class="controls-grid">
+            <div class="control-group">
+              <span class="control-label">Mode</span>
+              <select id="externalMode">
+                <option value="off">Off</option>
+                <option value="teleprompter">Teleprompter</option>
+                <option value="mirror">Mirror</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Display</span>
+              <select id="externalDisplay"></select>
+            </div>
+            <div class="control-group" id="mirrorAxisGroup" style="display:none">
+              <span class="control-label">Mirror Axis</span>
+              <select id="mirrorAxis">
+                <option value="horizontal">Horizontal</option>
+                <option value="vertical">Vertical</option>
+                <option value="both">Both (180&#176;)</option>
+              </select>
+            </div>
           </div>
         </div>
+      </div>
 
-        <div class="control-group">
-          <span class="control-label">Width (px)</span>
-          <div class="control-row">
-            <input type="range" id="overlayWidth" min="280" max="800" step="10" value="480">
-            <span class="range-value" id="widthVal">480</span>
-          </div>
+      <!-- Remote Connection -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Remote Connection</span>
+          <button class="section-toggle" id="toggleRemote">&#9660;</button>
         </div>
-
-        <div class="control-group">
-          <span class="control-label">Height (px)</span>
-          <div class="control-row">
-            <input type="range" id="overlayHeight" min="80" max="500" step="10" value="200">
-            <span class="range-value" id="heightVal">200</span>
-          </div>
-        </div>
-
-        <div class="control-group">
-          <span class="control-label">Font</span>
-          <select id="fontFamily">
-            <option value="-apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif">System</option>
-            <option value="'Georgia', serif">Georgia</option>
-            <option value="'Courier New', monospace">Courier</option>
-            <option value="'Arial', sans-serif">Arial</option>
-            <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
-          </select>
-        </div>
-
-        <div class="control-group full-width">
-          <span class="control-label">Highlight Color</span>
-          <div class="color-options">
-            <div class="color-swatch active" data-color="#e94560" style="background:#e94560"></div>
-            <div class="color-swatch" data-color="#f39c12" style="background:#f39c12"></div>
-            <div class="color-swatch" data-color="#2ecc71" style="background:#2ecc71"></div>
-            <div class="color-swatch" data-color="#3498db" style="background:#3498db"></div>
-            <div class="color-swatch" data-color="#9b59b6" style="background:#9b59b6"></div>
-            <div class="color-swatch" data-color="#ffffff" style="background:#ffffff"></div>
-          </div>
-        </div>
-
-        <div class="control-group full-width">
-          <label style="display:flex;align-items:center;gap:6px;cursor:pointer">
-            <input type="checkbox" id="mirrorFlip">
-            <span class="control-label" style="margin:0">Mirror / Flip (for prompter rigs)</span>
+        <div class="section-body" id="remoteBody">
+          <label class="check-label">
+            <input type="checkbox" id="enableRemote">
+            Enable remote connection
           </label>
+          <div style="margin-top:4px">
+            <div class="control-group" style="max-width:120px">
+              <span class="control-label">Port</span>
+              <input type="number" id="remotePort" value="7373" min="1024" max="65535"
+                style="background:var(--input-bg);border:1px solid var(--border);border-radius:5px;color:var(--text);padding:4px 6px;font-size:11px;width:80px;outline:none">
+            </div>
+          </div>
+          <div class="remote-panel" id="remotePanel">
+            <div class="remote-url">
+              <span id="remoteUrl">--</span>
+              <button class="copy-btn" id="copyUrlBtn">Copy</button>
+            </div>
+            <canvas id="qrCanvas" width="120" height="120"></canvas>
+          </div>
         </div>
       </div>
-    </div>
 
-    <!-- Action buttons -->
-    <div class="actions">
-      <button class="btn btn-primary" id="startBtn">▶ Start</button>
-      <button class="btn btn-stop" id="stopBtn">■ Stop</button>
-      <button class="btn btn-secondary" id="pauseBtn" style="display:none">⏸ Pause</button>
-    </div>
+      <!-- Actions -->
+      <div class="actions">
+        <button class="btn btn-primary" id="startBtn">&#9654; Start</button>
+        <button class="btn btn-stop" id="stopBtn">&#9632; Stop</button>
+        <button class="btn btn-secondary" id="pauseBtn" style="display:none">&#9208; Pause</button>
+      </div>
 
-    <div class="shortcuts">
-      <kbd>Ctrl+Shift+Space</kbd> Pause/Resume &nbsp; <kbd>Esc</kbd> Close Overlay
+      <div class="shortcuts">
+        <kbd>Ctrl+Shift+Space</kbd> Pause &nbsp;
+        <kbd>Esc</kbd> Close &nbsp;
+        <kbd>Ctrl+O</kbd> Open &nbsp;
+        <kbd>Ctrl+S</kbd> Save
+      </div>
     </div>
   </div>
 
@@ -544,88 +726,264 @@
       <div class="status-dot" id="statusDot"></div>
       <span id="statusText">Ready</span>
     </div>
-    <span class="word-count" id="wordCount">0 words</span>
+    <span id="wordCount" style="color:var(--text-muted)">0 words</span>
+  </div>
+
+  <!-- Context menu for pages -->
+  <div class="ctx-menu" id="pageCtxMenu">
+    <div class="ctx-item" id="ctxDeletePage">Delete Page</div>
   </div>
 
   <script>
-    const { ipcRenderer, dialog } = require('electron');
-    const fs = require('fs');
+    const { ipcRenderer } = require('electron');
+    const path = require('path');
 
-    // State
+    // ==========================================
+    // STATE
+    // ==========================================
+    let pages = [''];
+    let currentPage = 0;
+    let pagesRead = new Set();
     let currentMode = 'word-tracking';
     let currentDisplay = 'floating';
     let isRunning = false;
     let highlightColor = '#e94560';
+    let currentFilePath = null;
+    let hasUnsavedChanges = false;
 
     // Elements
     const scriptText = document.getElementById('scriptText');
-    const speedSlider = document.getElementById('speed');
-    const fontSizeSlider = document.getElementById('fontSize');
-    const opacitySlider = document.getElementById('opacity');
-    const widthSlider = document.getElementById('overlayWidth');
-    const heightSlider = document.getElementById('overlayHeight');
-    const fontSelect = document.getElementById('fontFamily');
-    const mirrorCheck = document.getElementById('mirrorFlip');
     const startBtn = document.getElementById('startBtn');
     const stopBtn = document.getElementById('stopBtn');
     const pauseBtn = document.getElementById('pauseBtn');
     const statusDot = document.getElementById('statusDot');
     const statusText = document.getElementById('statusText');
     const wordCount = document.getElementById('wordCount');
+    const unsavedDot = document.getElementById('unsavedDot');
+    const pageSidebar = document.getElementById('pageSidebar');
+    const pageLabel = document.getElementById('pageLabel');
 
-    // Mode tabs
-    document.querySelectorAll('.mode-tab').forEach(tab => {
-      tab.addEventListener('click', () => {
-        document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
-        tab.classList.add('active');
-        currentMode = tab.dataset.mode;
-        updateRunningSettings();
-      });
-    });
+    // ==========================================
+    // MULTI-PAGE SUPPORT
+    // ==========================================
 
-    // Display mode
-    document.querySelectorAll('.display-mode-btn').forEach(btn => {
-      btn.addEventListener('click', () => {
-        document.querySelectorAll('.display-mode-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        currentDisplay = btn.dataset.display;
-      });
-    });
+    function renderPages() {
+      // Remove old page buttons (keep add button)
+      pageSidebar.querySelectorAll('.page-btn').forEach(b => b.remove());
+      const addBtn = document.getElementById('addPageBtn');
 
-    // Color swatches
-    document.querySelectorAll('.color-swatch').forEach(swatch => {
-      swatch.addEventListener('click', () => {
-        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
-        swatch.classList.add('active');
-        highlightColor = swatch.dataset.color;
-        updateRunningSettings();
+      pages.forEach((_, i) => {
+        const btn = document.createElement('button');
+        btn.className = 'page-btn' + (i === currentPage ? ' active' : '');
+        btn.dataset.page = i;
+        btn.innerHTML = `${i + 1}<span class="read-check ${pagesRead.has(i) ? 'visible' : ''}">&#10003;</span>`;
+        btn.addEventListener('click', () => switchPage(i));
+        btn.addEventListener('contextmenu', (e) => {
+          e.preventDefault();
+          showPageContextMenu(e, i);
+        });
+        pageSidebar.insertBefore(btn, addBtn);
       });
-    });
 
-    // Sliders
-    function bindSlider(slider, display, formatter) {
-      slider.addEventListener('input', () => {
-        display.textContent = formatter(slider.value);
-        updateRunningSettings();
-      });
+      pageLabel.textContent = `Page ${currentPage + 1}/${pages.length}`;
     }
 
-    bindSlider(speedSlider, document.getElementById('speedVal'), v => parseFloat(v).toFixed(1));
-    bindSlider(fontSizeSlider, document.getElementById('fontSizeVal'), v => v);
-    bindSlider(opacitySlider, document.getElementById('opacityVal'), v => Math.round(v * 100) + '%');
-    bindSlider(widthSlider, document.getElementById('widthVal'), v => v);
-    bindSlider(heightSlider, document.getElementById('heightVal'), v => v);
+    function switchPage(index) {
+      // Save current page content
+      pages[currentPage] = scriptText.value;
+      currentPage = index;
+      scriptText.value = pages[currentPage] || '';
+      scriptText.dispatchEvent(new Event('input'));
+      renderPages();
+    }
 
-    // Word count
-    scriptText.addEventListener('input', () => {
-      const words = scriptText.value.trim().split(/\s+/).filter(w => w.length > 0);
-      wordCount.textContent = words.length + ' words';
+    function addPage() {
+      pages[currentPage] = scriptText.value;
+      pages.push('');
+      currentPage = pages.length - 1;
+      scriptText.value = '';
+      scriptText.dispatchEvent(new Event('input'));
+      markUnsaved();
+      renderPages();
+    }
+
+    function deletePage(index) {
+      if (pages.length <= 1) return;
+      pages.splice(index, 1);
+      pagesRead.delete(index);
+      if (currentPage >= pages.length) currentPage = pages.length - 1;
+      scriptText.value = pages[currentPage] || '';
+      scriptText.dispatchEvent(new Event('input'));
+      markUnsaved();
+      renderPages();
+    }
+
+    document.getElementById('addPageBtn').addEventListener('click', addPage);
+
+    // Page context menu
+    let ctxTargetPage = 0;
+    function showPageContextMenu(e, pageIndex) {
+      ctxTargetPage = pageIndex;
+      const menu = document.getElementById('pageCtxMenu');
+      menu.style.left = e.clientX + 'px';
+      menu.style.top = e.clientY + 'px';
+      menu.classList.add('visible');
+      const delItem = document.getElementById('ctxDeletePage');
+      delItem.className = pages.length <= 1 ? 'ctx-item disabled' : 'ctx-item';
+    }
+
+    document.getElementById('ctxDeletePage').addEventListener('click', () => {
+      deletePage(ctxTargetPage);
+      document.getElementById('pageCtxMenu').classList.remove('visible');
     });
 
-    // Import file
-    document.getElementById('importBtn').addEventListener('click', () => {
-      const { dialog } = require('electron').remote || require('@electron/remote') || {};
-      // Fallback: use input element
+    document.addEventListener('click', () => {
+      document.getElementById('pageCtxMenu').classList.remove('visible');
+    });
+
+    // ==========================================
+    // FILE OPERATIONS
+    // ==========================================
+
+    function markUnsaved() {
+      hasUnsavedChanges = true;
+      unsavedDot.classList.add('visible');
+    }
+
+    function markSaved() {
+      hasUnsavedChanges = false;
+      unsavedDot.classList.remove('visible');
+    }
+
+    async function openFile() {
+      const result = await ipcRenderer.invoke('show-open-dialog', {
+        filters: [
+          { name: 'All Supported', extensions: ['txt', 'md', 'json', 'pptx'] },
+          { name: 'Text Files', extensions: ['txt', 'md'] },
+          { name: 'openTeleprompter Project', extensions: ['json'] },
+          { name: 'PowerPoint', extensions: ['pptx'] },
+        ]
+      });
+
+      if (result.canceled || !result.filePaths.length) return;
+      const filePath = result.filePaths[0];
+      const ext = path.extname(filePath).toLowerCase();
+
+      if (ext === '.pptx') {
+        await importPptx(filePath);
+      } else if (ext === '.json') {
+        const content = await ipcRenderer.invoke('read-file', filePath);
+        try {
+          const data = JSON.parse(content);
+          if (Array.isArray(data.pages)) {
+            pages = data.pages;
+            currentPage = 0;
+            scriptText.value = pages[0] || '';
+            scriptText.dispatchEvent(new Event('input'));
+            renderPages();
+            currentFilePath = filePath;
+            markSaved();
+          }
+        } catch (e) {
+          scriptText.value = content;
+          pages = [content];
+          currentPage = 0;
+          renderPages();
+        }
+      } else {
+        const content = await ipcRenderer.invoke('read-file', filePath);
+        scriptText.value = content;
+        pages = [content];
+        currentPage = 0;
+        renderPages();
+        currentFilePath = filePath;
+        markSaved();
+      }
+
+      scriptText.dispatchEvent(new Event('input'));
+    }
+
+    async function saveFile() {
+      pages[currentPage] = scriptText.value;
+
+      if (!currentFilePath || !currentFilePath.endsWith('.json')) {
+        const result = await ipcRenderer.invoke('show-save-dialog', {
+          defaultPath: 'script.json',
+          filters: [
+            { name: 'openTeleprompter Project', extensions: ['json'] },
+            { name: 'Text File', extensions: ['txt'] },
+          ]
+        });
+        if (result.canceled) return;
+        currentFilePath = result.filePath;
+      }
+
+      if (currentFilePath.endsWith('.json')) {
+        const data = JSON.stringify({ pages, settings: getSettingsObj() }, null, 2);
+        await ipcRenderer.invoke('write-file', currentFilePath, data);
+      } else {
+        await ipcRenderer.invoke('write-file', currentFilePath, pages.join('\n\n---\n\n'));
+      }
+
+      markSaved();
+    }
+
+    async function importPptx(filePath) {
+      try {
+        const JSZip = require('jszip') || null;
+        if (!JSZip) {
+          // jszip not available, read as text fallback
+          const content = await ipcRenderer.invoke('read-file', filePath);
+          scriptText.value = '(PowerPoint import requires jszip dependency)\n\n' + content;
+          return;
+        }
+        const buffer = await ipcRenderer.invoke('read-file-buffer', filePath);
+        const zip = await JSZip.loadAsync(buffer);
+        const slideNotes = [];
+
+        // Find slide note files
+        const noteFiles = Object.keys(zip.files)
+          .filter(f => f.match(/ppt\/notesSlides\/notesSlide\d+\.xml/))
+          .sort((a, b) => {
+            const na = parseInt(a.match(/\d+/)[0]);
+            const nb = parseInt(b.match(/\d+/)[0]);
+            return na - nb;
+          });
+
+        for (const noteFile of noteFiles) {
+          const xml = await zip.file(noteFile).async('text');
+          // Extract text from XML <a:t> tags
+          const texts = [];
+          const regex = /<a:t>([^<]*)<\/a:t>/g;
+          let match;
+          while ((match = regex.exec(xml)) !== null) {
+            const text = match[1].trim();
+            // Filter out slide numbers, dates, headers/footers
+            if (text && !/^\d+$/.test(text) && text.length > 1) {
+              texts.push(text);
+            }
+          }
+          if (texts.length > 0) {
+            slideNotes.push(texts.join(' '));
+          }
+        }
+
+        if (slideNotes.length > 0) {
+          pages = slideNotes;
+          currentPage = 0;
+          scriptText.value = pages[0];
+          scriptText.dispatchEvent(new Event('input'));
+          renderPages();
+          markUnsaved();
+        }
+      } catch (e) {
+        console.error('PPTX import error:', e);
+      }
+    }
+
+    document.getElementById('openFileBtn').addEventListener('click', openFile);
+    document.getElementById('saveFileBtn').addEventListener('click', saveFile);
+    document.getElementById('importTxtBtn').addEventListener('click', () => {
       const input = document.createElement('input');
       input.type = 'file';
       input.accept = '.txt,.md,.text';
@@ -635,7 +993,9 @@
           const reader = new FileReader();
           reader.onload = (ev) => {
             scriptText.value = ev.target.result;
+            pages[currentPage] = ev.target.result;
             scriptText.dispatchEvent(new Event('input'));
+            markUnsaved();
           };
           reader.readAsText(file);
         }
@@ -643,53 +1003,382 @@
       input.click();
     });
 
-    document.getElementById('clearBtn').addEventListener('click', () => {
-      scriptText.value = '';
-      scriptText.dispatchEvent(new Event('input'));
+    document.getElementById('importPptxBtn').addEventListener('click', async () => {
+      const result = await ipcRenderer.invoke('show-open-dialog', {
+        filters: [{ name: 'PowerPoint', extensions: ['pptx'] }]
+      });
+      if (!result.canceled && result.filePaths.length) {
+        await importPptx(result.filePaths[0]);
+      }
     });
 
-    // Gather current settings
-    function getSettings() {
+    document.getElementById('clearBtn').addEventListener('click', () => {
+      scriptText.value = '';
+      pages[currentPage] = '';
+      scriptText.dispatchEvent(new Event('input'));
+      markUnsaved();
+    });
+
+    // ==========================================
+    // DRAG & DROP
+    // ==========================================
+
+    const dropZone = document.getElementById('dropZone');
+
+    dropZone.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.add('dragover');
+    });
+
+    dropZone.addEventListener('dragleave', () => {
+      dropZone.classList.remove('dragover');
+    });
+
+    dropZone.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      dropZone.classList.remove('dragover');
+
+      const files = Array.from(e.dataTransfer.files);
+      if (!files.length) return;
+
+      const file = files[0];
+      const ext = path.extname(file.name).toLowerCase();
+
+      if (ext === '.pptx') {
+        await importPptx(file.path);
+      } else if (ext === '.json') {
+        const content = await ipcRenderer.invoke('read-file', file.path);
+        try {
+          const data = JSON.parse(content);
+          if (Array.isArray(data.pages)) {
+            pages = data.pages;
+            currentPage = 0;
+            scriptText.value = pages[0] || '';
+            renderPages();
+          }
+        } catch (ex) {
+          scriptText.value = content;
+          pages[currentPage] = content;
+        }
+      } else {
+        const reader = new FileReader();
+        reader.onload = (ev) => {
+          scriptText.value = ev.target.result;
+          pages[currentPage] = ev.target.result;
+          scriptText.dispatchEvent(new Event('input'));
+        };
+        reader.readAsText(file);
+      }
+      markUnsaved();
+    });
+
+    dropZone.addEventListener('click', () => {
+      document.getElementById('importTxtBtn').click();
+    });
+
+    // ==========================================
+    // MODE & DISPLAY TABS
+    // ==========================================
+
+    document.querySelectorAll('.mode-tab').forEach(tab => {
+      tab.addEventListener('click', () => {
+        document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
+        tab.classList.add('active');
+        currentMode = tab.dataset.mode;
+        updateRunningSettings();
+      });
+    });
+
+    document.querySelectorAll('.display-mode-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.display-mode-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentDisplay = btn.dataset.display;
+      });
+    });
+
+    document.querySelectorAll('.color-swatch').forEach(swatch => {
+      swatch.addEventListener('click', () => {
+        document.querySelectorAll('.color-swatch').forEach(s => s.classList.remove('active'));
+        swatch.classList.add('active');
+        highlightColor = swatch.dataset.color;
+        updateRunningSettings();
+      });
+    });
+
+    // ==========================================
+    // SLIDERS
+    // ==========================================
+
+    function bindSlider(id, displayId, formatter) {
+      const slider = document.getElementById(id);
+      const display = document.getElementById(displayId);
+      slider.addEventListener('input', () => {
+        display.textContent = formatter(slider.value);
+        updateRunningSettings();
+      });
+    }
+
+    bindSlider('speed', 'speedVal', v => parseFloat(v).toFixed(1));
+    bindSlider('fontSize', 'fontSizeVal', v => v);
+    bindSlider('opacity', 'opacityVal', v => Math.round(v * 100) + '%');
+    bindSlider('overlayWidth', 'widthVal', v => v);
+    bindSlider('overlayHeight', 'heightVal', v => v);
+
+    // Word count
+    scriptText.addEventListener('input', () => {
+      pages[currentPage] = scriptText.value;
+      const words = scriptText.value.trim().split(/\s+/).filter(w => w.length > 0);
+      wordCount.textContent = words.length + ' words';
+      markUnsaved();
+    });
+
+    // Settings toggle
+    document.getElementById('toggleSettings').addEventListener('click', function () {
+      const section = this.closest('.section');
+      section.classList.toggle('collapsed');
+      this.textContent = section.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+    });
+
+    document.getElementById('toggleExternal').addEventListener('click', function () {
+      const section = this.closest('.section');
+      section.classList.toggle('collapsed');
+      this.textContent = section.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+    });
+
+    document.getElementById('toggleRemote').addEventListener('click', function () {
+      const section = this.closest('.section');
+      section.classList.toggle('collapsed');
+      this.textContent = section.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+    });
+
+    // Auto next page toggle
+    document.getElementById('autoNextPage').addEventListener('change', function () {
+      document.getElementById('autoNextOptions').style.display = this.checked ? 'flex' : 'none';
+    });
+
+    // ==========================================
+    // EXTERNAL DISPLAY
+    // ==========================================
+
+    function populateDisplays() {
+      const displays = ipcRenderer.sendSync('get-displays');
+      const sel = document.getElementById('externalDisplay');
+      sel.innerHTML = '';
+      displays.forEach(d => {
+        const opt = document.createElement('option');
+        opt.value = d.id;
+        opt.textContent = d.label;
+        if (!d.isPrimary) sel.appendChild(opt);
+      });
+      if (sel.options.length === 0) {
+        const opt = document.createElement('option');
+        opt.textContent = 'No external display';
+        opt.disabled = true;
+        sel.appendChild(opt);
+      }
+    }
+
+    populateDisplays();
+
+    document.getElementById('externalMode').addEventListener('change', function () {
+      const mode = this.value;
+      document.getElementById('mirrorAxisGroup').style.display = mode === 'mirror' ? 'block' : 'none';
+      if (mode === 'off') {
+        ipcRenderer.send('close-external-display');
+      } else {
+        const displayId = parseInt(document.getElementById('externalDisplay').value);
+        if (displayId) {
+          ipcRenderer.send('open-external-display', displayId);
+        }
+      }
+    });
+
+    // ==========================================
+    // REMOTE CONNECTION
+    // ==========================================
+
+    document.getElementById('enableRemote').addEventListener('change', function () {
+      if (this.checked) {
+        const port = parseInt(document.getElementById('remotePort').value) || 7373;
+        ipcRenderer.send('start-remote-server', port);
+      } else {
+        ipcRenderer.send('stop-remote-server');
+        document.getElementById('remotePanel').classList.remove('visible');
+      }
+    });
+
+    ipcRenderer.on('remote-server-started', (event, { ip, port, url }) => {
+      document.getElementById('remoteUrl').textContent = url;
+      document.getElementById('remotePanel').classList.add('visible');
+      drawQR(url);
+    });
+
+    ipcRenderer.on('remote-server-stopped', () => {
+      document.getElementById('remotePanel').classList.remove('visible');
+    });
+
+    ipcRenderer.on('remote-server-error', (event, msg) => {
+      document.getElementById('remoteUrl').textContent = 'Error: ' + msg;
+      document.getElementById('remotePanel').classList.add('visible');
+    });
+
+    document.getElementById('copyUrlBtn').addEventListener('click', () => {
+      const url = document.getElementById('remoteUrl').textContent;
+      navigator.clipboard.writeText(url);
+      document.getElementById('copyUrlBtn').textContent = 'Copied!';
+      setTimeout(() => { document.getElementById('copyUrlBtn').textContent = 'Copy'; }, 1500);
+    });
+
+    // Simple QR code renderer (uses canvas - basic version)
+    function drawQR(text) {
+      const canvas = document.getElementById('qrCanvas');
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(0, 0, 120, 120);
+      ctx.fillStyle = '#000000';
+      ctx.font = '10px monospace';
+      ctx.textAlign = 'center';
+      // Show URL text as fallback (proper QR needs a library)
+      const lines = text.match(/.{1,18}/g) || [text];
+      lines.forEach((line, i) => {
+        ctx.fillText(line, 60, 40 + i * 14);
+      });
+      ctx.font = '8px sans-serif';
+      ctx.fillStyle = '#888';
+      ctx.fillText('Scan or type URL', 60, 110);
+    }
+
+    // ==========================================
+    // SETTINGS GATHER & PERSIST
+    // ==========================================
+
+    function getSettingsObj() {
       return {
         mode: currentMode,
         display: currentDisplay,
-        speed: parseFloat(speedSlider.value),
-        fontSize: parseInt(fontSizeSlider.value),
-        opacity: parseFloat(opacitySlider.value),
-        width: parseInt(widthSlider.value),
-        height: parseInt(heightSlider.value),
-        fontFamily: fontSelect.value,
+        speed: parseFloat(document.getElementById('speed').value),
+        fontSize: parseInt(document.getElementById('fontSize').value),
+        opacity: parseFloat(document.getElementById('opacity').value),
+        width: parseInt(document.getElementById('overlayWidth').value),
+        height: parseInt(document.getElementById('overlayHeight').value),
+        fontFamily: document.getElementById('fontFamily').value,
         highlightColor: highlightColor,
-        mirror: mirrorCheck.checked,
+        mirror: document.getElementById('mirrorFlip').checked,
+        showElapsed: document.getElementById('showElapsed').checked,
+        autoNextPage: document.getElementById('autoNextPage').checked,
+        autoNextDelay: parseInt(document.getElementById('autoNextDelay').value),
+        speechLang: document.getElementById('speechLang').value,
         text: scriptText.value,
+        pageIndex: currentPage,
+        totalPages: pages.length,
       };
     }
 
     function updateRunningSettings() {
       if (isRunning) {
-        ipcRenderer.send('update-settings', getSettings());
+        ipcRenderer.send('update-settings', getSettingsObj());
       }
     }
 
-    // Start
-    startBtn.addEventListener('click', () => {
-      const text = scriptText.value.trim();
+    function persistSettings() {
+      ipcRenderer.send('save-settings', {
+        mode: currentMode,
+        display: currentDisplay,
+        speed: parseFloat(document.getElementById('speed').value),
+        fontSize: parseInt(document.getElementById('fontSize').value),
+        opacity: parseFloat(document.getElementById('opacity').value),
+        width: parseInt(document.getElementById('overlayWidth').value),
+        height: parseInt(document.getElementById('overlayHeight').value),
+        fontFamily: document.getElementById('fontFamily').value,
+        highlightColor: highlightColor,
+        mirror: document.getElementById('mirrorFlip').checked,
+        showElapsed: document.getElementById('showElapsed').checked,
+        autoNextPage: document.getElementById('autoNextPage').checked,
+        autoNextDelay: parseInt(document.getElementById('autoNextDelay').value),
+        speechLang: document.getElementById('speechLang').value,
+      });
+    }
+
+    // Load saved settings
+    ipcRenderer.on('load-settings', (event, s) => {
+      if (s.mode) {
+        currentMode = s.mode;
+        document.querySelectorAll('.mode-tab').forEach(t => {
+          t.classList.toggle('active', t.dataset.mode === s.mode);
+        });
+      }
+      if (s.display) {
+        currentDisplay = s.display;
+        document.querySelectorAll('.display-mode-btn').forEach(b => {
+          b.classList.toggle('active', b.dataset.display === s.display);
+        });
+      }
+      if (s.speed) { document.getElementById('speed').value = s.speed; document.getElementById('speedVal').textContent = parseFloat(s.speed).toFixed(1); }
+      if (s.fontSize) { document.getElementById('fontSize').value = s.fontSize; document.getElementById('fontSizeVal').textContent = s.fontSize; }
+      if (s.opacity) { document.getElementById('opacity').value = s.opacity; document.getElementById('opacityVal').textContent = Math.round(s.opacity * 100) + '%'; }
+      if (s.width) { document.getElementById('overlayWidth').value = s.width; document.getElementById('widthVal').textContent = s.width; }
+      if (s.height) { document.getElementById('overlayHeight').value = s.height; document.getElementById('heightVal').textContent = s.height; }
+      if (s.fontFamily) document.getElementById('fontFamily').value = s.fontFamily;
+      if (s.highlightColor) {
+        highlightColor = s.highlightColor;
+        document.querySelectorAll('.color-swatch').forEach(sw => {
+          sw.classList.toggle('active', sw.dataset.color === s.highlightColor);
+        });
+      }
+      if (s.mirror !== undefined) document.getElementById('mirrorFlip').checked = s.mirror;
+      if (s.showElapsed !== undefined) document.getElementById('showElapsed').checked = s.showElapsed;
+      if (s.autoNextPage !== undefined) {
+        document.getElementById('autoNextPage').checked = s.autoNextPage;
+        document.getElementById('autoNextOptions').style.display = s.autoNextPage ? 'flex' : 'none';
+      }
+      if (s.autoNextDelay) document.getElementById('autoNextDelay').value = s.autoNextDelay;
+      if (s.speechLang) document.getElementById('speechLang').value = s.speechLang;
+    });
+
+    // Save settings on change
+    ['speed', 'fontSize', 'opacity', 'overlayWidth', 'overlayHeight'].forEach(id => {
+      document.getElementById(id).addEventListener('change', persistSettings);
+    });
+    ['fontFamily', 'speechLang', 'autoNextDelay'].forEach(id => {
+      document.getElementById(id).addEventListener('change', persistSettings);
+    });
+    ['mirrorFlip', 'showElapsed', 'autoNextPage'].forEach(id => {
+      document.getElementById(id).addEventListener('change', persistSettings);
+    });
+    document.querySelectorAll('.color-swatch').forEach(s => s.addEventListener('click', persistSettings));
+    document.querySelectorAll('.mode-tab').forEach(t => t.addEventListener('click', persistSettings));
+    document.querySelectorAll('.display-mode-btn').forEach(b => b.addEventListener('click', persistSettings));
+
+    // ==========================================
+    // START / STOP / PAUSE
+    // ==========================================
+
+    startBtn.addEventListener('click', startPrompter);
+    stopBtn.addEventListener('click', stopPrompter);
+    pauseBtn.addEventListener('click', togglePause);
+
+    function startPrompter() {
+      pages[currentPage] = scriptText.value;
+
+      // Collect all pages text for current page
+      const text = pages[currentPage].trim();
       if (!text) {
         scriptText.focus();
-        scriptText.placeholder = '⚠ Please enter a script first...';
+        scriptText.placeholder = 'Please enter a script first...';
         return;
       }
 
-      const settings = getSettings();
+      const settings = getSettingsObj();
 
       ipcRenderer.send('open-prompter', {
         mode: currentDisplay,
         width: settings.width,
         height: settings.height,
-        clickThrough: false,
       });
 
-      // Slight delay to let window open, then send content
       setTimeout(() => {
         ipcRenderer.send('update-prompter', settings);
       }, 500);
@@ -700,42 +1389,70 @@
       pauseBtn.style.display = 'flex';
       statusDot.classList.add('active');
       statusText.textContent = 'Running - ' + currentMode.replace('-', ' ');
-    });
+    }
 
-    // Stop
-    stopBtn.addEventListener('click', () => {
+    function stopPrompter() {
       ipcRenderer.send('close-prompter');
       resetUI();
-    });
+    }
 
-    // Pause
-    pauseBtn.addEventListener('click', () => {
+    function togglePause() {
       ipcRenderer.send('scroll-command', 'toggle-pause');
       if (pauseBtn.textContent.includes('Pause')) {
-        pauseBtn.innerHTML = '▶ Resume';
+        pauseBtn.innerHTML = '&#9654; Resume';
         statusText.textContent = 'Paused';
       } else {
-        pauseBtn.innerHTML = '⏸ Pause';
+        pauseBtn.innerHTML = '&#9208; Pause';
         statusText.textContent = 'Running - ' + currentMode.replace('-', ' ');
       }
-    });
+    }
 
     function resetUI() {
       isRunning = false;
       startBtn.style.display = 'flex';
       stopBtn.style.display = 'none';
       pauseBtn.style.display = 'none';
-      pauseBtn.innerHTML = '⏸ Pause';
+      pauseBtn.innerHTML = '&#9208; Pause';
       statusDot.classList.remove('active');
       statusText.textContent = 'Ready';
     }
 
-    // Listen for prompter closed
     ipcRenderer.on('prompter-closed', resetUI);
 
-    // Settings changes while running
-    fontSelect.addEventListener('change', updateRunningSettings);
-    mirrorCheck.addEventListener('change', updateRunningSettings);
+    // Tray commands
+    ipcRenderer.on('tray-start', startPrompter);
+    ipcRenderer.on('tray-stop', stopPrompter);
+
+    // Keyboard shortcuts from main process
+    ipcRenderer.on('shortcut-open', openFile);
+    ipcRenderer.on('shortcut-save', saveFile);
+
+    // Auto next page: when prompter signals page done
+    ipcRenderer.on('page-finished', () => {
+      pagesRead.add(currentPage);
+      renderPages();
+
+      if (document.getElementById('autoNextPage').checked && currentPage < pages.length - 1) {
+        // Move to next page after countdown
+        const delay = parseInt(document.getElementById('autoNextDelay').value) * 1000;
+        setTimeout(() => {
+          if (!isRunning) return;
+          switchPage(currentPage + 1);
+          // Restart prompter for new page
+          const settings = getSettingsObj();
+          ipcRenderer.send('update-prompter', settings);
+        }, delay);
+      }
+    });
+
+    // Settings change events
+    document.getElementById('fontFamily').addEventListener('change', updateRunningSettings);
+    document.getElementById('mirrorFlip').addEventListener('change', updateRunningSettings);
+    document.getElementById('showElapsed').addEventListener('change', updateRunningSettings);
+    document.getElementById('speechLang').addEventListener('change', updateRunningSettings);
+
+    // Init
+    renderPages();
   </script>
 </body>
 </html>
