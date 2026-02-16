@@ -847,11 +847,13 @@
 
     function markUnsaved() {
       hasUnsavedChanges = true;
+      window.hasUnsavedChanges = true;
       unsavedDot.classList.add('visible');
     }
 
     function markSaved() {
       hasUnsavedChanges = false;
+      window.hasUnsavedChanges = false;
       unsavedDot.classList.remove('visible');
     }
 
@@ -1393,13 +1395,7 @@
           upward = !upward;
         }
 
-        // Apply mask pattern 0: (row + col) % 2 === 0
-        for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
-          if (reserved[y][x] && bitIdx > 0) { /* skip finder/timing */ }
-          // Only mask data/ec modules (not finder, timing, etc.)
-          // We need to track which were data modules. Simplification: mask all non-format
-        }
-        // Re-do: track data cells properly
+        // Track data cells for masking (exclude finder, timing, alignment patterns)
         const isData = Array.from({ length: size }, () => new Uint8Array(size));
         bitIdx = 0; upward = true;
         for (let col = size - 1; col >= 0; col -= 2) {
