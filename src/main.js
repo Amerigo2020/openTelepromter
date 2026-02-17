@@ -65,6 +65,34 @@ function createControlWindow() {
   controlWindow.loadFile(path.join(__dirname, 'control.html'));
   controlWindow.setMenuBarVisibility(false);
 
+  controlWindow.on('close', (e) => {
+    // Ask control window if there are unsaved changes
+    const hasUnsaved = controlWindow.webContents.executeJavaScript('window.hasUnsavedChanges || false').catch(() => false);
+    hasUnsaved.then(unsaved => {
+      if (unsaved) {
+        const choice = dialog.showMessageBoxSync(controlWindow, {
+          type: 'question',
+          buttons: ['Save & Quit', 'Quit without saving', 'Cancel'],
+          defaultId: 0,
+          cancelId: 2,
+          title: 'Unsaved Changes',
+          message: 'You have unsaved changes. What would you like to do?',
+        });
+        if (choice === 2) return; // Cancel - don't close
+        if (choice === 0) {
+          controlWindow.webContents.send('shortcut-save');
+          // Give a moment for save dialog, then close
+          setTimeout(() => {
+            controlWindow.destroy();
+          }, 500);
+          return;
+        }
+      }
+      controlWindow.destroy();
+    });
+    e.preventDefault();
+  });
+
   controlWindow.on('closed', () => {
     controlWindow = null;
     if (prompterWindow) prompterWindow.close();
@@ -123,6 +151,13 @@ function createPrompterWindow(options) {
   if (options.mode === 'fullscreen') {
     prompterWindow.setFullScreen(true);
   }
+
+  prompterWindow.webContents.on('before-input-event', (event, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'Escape') {
+      if (prompterWindow) prompterWindow.close();
+    }
+  });
 
   prompterWindow.on('closed', () => {
     prompterWindow = null;
@@ -259,14 +294,21 @@ function stopRemoteServer() {
   if (httpServer) { try { httpServer.close(); } catch (e) {} httpServer = null; }
 }
 
+let broadcastTimer = null;
 function broadcastRemoteState() {
   if (!wss) return;
-  const data = JSON.stringify(remoteState);
-  wss.clients.forEach(client => {
-    if (client.readyState === 1) {
-      client.send(data);
-    }
-  });
+  // Throttle broadcasts to max ~10/sec to avoid flooding clients
+  if (broadcastTimer) return;
+  broadcastTimer = setTimeout(() => {
+    broadcastTimer = null;
+    if (!wss) return;
+    const data = JSON.stringify(remoteState);
+    wss.clients.forEach(client => {
+      if (client.readyState === 1) {
+        client.send(data);
+      }
+    });
+  }, 100);
 }
 
 function generateBrowserPage() {
@@ -394,22 +436,21 @@ app.whenReady().then(() => {
     }
   });
 
-  globalShortcut.register('Escape', () => {
-    if (prompterWindow) {
-      prompterWindow.close();
+  // Escape, Ctrl+O, Ctrl+S are handled locally via 'before-input-event'
+  // to avoid hijacking these keys from other applications
+  const handleLocalShortcut = (win, input) => {
+    if (input.type !== 'keyDown') return;
+    if (input.key === 'Escape') {
+      if (prompterWindow) prompterWindow.close();
+    } else if (input.key === 'o' && (input.control || input.meta)) {
+      if (controlWindow) controlWindow.webContents.send('shortcut-open');
+    } else if (input.key === 's' && (input.control || input.meta)) {
+      if (controlWindow) controlWindow.webContents.send('shortcut-save');
     }
-  });
+  };
 
-  globalShortcut.register('CommandOrControl+O', () => {
-    if (controlWindow) {
-      controlWindow.webContents.send('shortcut-open');
-    }
-  });
-
-  globalShortcut.register('CommandOrControl+S', () => {
-    if (controlWindow) {
-      controlWindow.webContents.send('shortcut-save');
-    }
+  controlWindow.webContents.on('before-input-event', (event, input) => {
+    handleLocalShortcut(controlWindow, input);
   });
 });
 
@@ -460,7 +501,12 @@ ipcMain.on('update-settings', (event, settings) => {
 });
 
 ipcMain.on('scroll-command', (event, cmd) => {
-  if (prompterWindow) {
+  if (cmd === 'page-finished') {
+    // Route page-finished to control window so auto-next-page works
+    if (controlWindow) {
+      controlWindow.webContents.send('page-finished');
+    }
+  } else if (prompterWindow) {
     prompterWindow.webContents.send('scroll-command', cmd);
   }
 });

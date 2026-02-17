@@ -847,11 +847,13 @@
 
     function markUnsaved() {
       hasUnsavedChanges = true;
+      window.hasUnsavedChanges = true;
       unsavedDot.classList.add('visible');
     }
 
     function markSaved() {
       hasUnsavedChanges = false;
+      window.hasUnsavedChanges = false;
       unsavedDot.classList.remove('visible');
     }
 
@@ -1232,23 +1234,253 @@
       setTimeout(() => { document.getElementById('copyUrlBtn').textContent = 'Copy'; }, 1500);
     });
 
-    // Simple QR code renderer (uses canvas - basic version)
+    // QR Code generator (self-contained, no external library)
+    // Generates a real, scannable QR code on canvas
+    const QR = (() => {
+      // Galois Field GF(2^8) with polynomial 0x11d
+      const EXP = new Uint8Array(256), LOG = new Uint8Array(256);
+      let v = 1;
+      for (let i = 0; i < 255; i++) { EXP[i] = v; LOG[v] = i; v = (v << 1) ^ (v >= 128 ? 0x11d : 0); }
+      EXP[255] = EXP[0];
+      const gfMul = (a, b) => a && b ? EXP[(LOG[a] + LOG[b]) % 255] : 0;
+
+      function rsEncode(data, ecLen) {
+        const gen = new Uint8Array(ecLen + 1);
+        gen[0] = 1;
+        for (let i = 0; i < ecLen; i++) {
+          for (let j = ecLen; j >= 1; j--) gen[j] = gen[j - 1] ^ gfMul(gen[j], EXP[i]);
+          gen[0] = gfMul(gen[0], EXP[i]);
+        }
+        const msg = new Uint8Array(data.length + ecLen);
+        msg.set(data);
+        for (let i = 0; i < data.length; i++) {
+          const coef = msg[i];
+          if (coef) for (let j = 0; j <= ecLen; j++) msg[i + j] ^= gfMul(gen[j], coef);
+        }
+        return msg.slice(data.length);
+      }
+
+      // Version/EC capacity table for versions 1-10, EC level M (medium)
+      const CAPS = [0, 16, 28, 44, 64, 86, 108, 124, 154, 182, 216];
+      const EC_CODEWORDS = [0, 10, 16, 26, 18, 24, 16, 18, 22, 22, 28];
+      const NUM_BLOCKS = [0, 1, 1, 1, 2, 2, 4, 4, 4, 4, 4]; // simplified for EC level M
+
+      function chooseVersion(len) {
+        // Byte mode: 4 bits mode + char count bits + 8*len bits + terminator
+        for (let v = 1; v <= 10; v++) {
+          const ccBits = v <= 9 ? 8 : 16;
+          const totalBits = 4 + ccBits + len * 8;
+          const dataCap = (CAPS[v] - EC_CODEWORDS[v] * NUM_BLOCKS[v]) * 8;
+          if (totalBits <= dataCap) return v;
+        }
+        return 10; // max we handle
+      }
+
+      function encode(text) {
+        const bytes = new TextEncoder().encode(text);
+        const ver = chooseVersion(bytes.length);
+        const size = ver * 4 + 17;
+        const totalCW = CAPS[ver];
+        const ecCW = EC_CODEWORDS[ver];
+        const numBlocks = NUM_BLOCKS[ver];
+        const dataCW = totalCW - ecCW * numBlocks;
+        const ccBits = ver <= 9 ? 8 : 16;
+
+        // Build bit stream: mode 0100 (byte), char count, data, terminator
+        const bits = [];
+        const pushBits = (val, len) => { for (let i = len - 1; i >= 0; i--) bits.push((val >> i) & 1); };
+        pushBits(0b0100, 4); // byte mode
+        pushBits(bytes.length, ccBits);
+        for (const b of bytes) pushBits(b, 8);
+        pushBits(0, Math.min(4, dataCW * 8 - bits.length)); // terminator
+        while (bits.length % 8) bits.push(0); // byte align
+        // Pad to fill data capacity
+        const padBytes = [0xEC, 0x11];
+        let pi = 0;
+        while (bits.length < dataCW * 8) { pushBits(padBytes[pi % 2], 8); pi++; }
+
+        // Convert to codewords
+        const dataArr = new Uint8Array(dataCW);
+        for (let i = 0; i < dataCW; i++) {
+          let val = 0;
+          for (let b = 0; b < 8; b++) val = (val << 1) | (bits[i * 8 + b] || 0);
+          dataArr[i] = val;
+        }
+
+        // Split into blocks, generate EC for each
+        const blockSize = Math.floor(dataCW / numBlocks);
+        const remainder = dataCW % numBlocks;
+        const dataBlocks = [], ecBlocks = [];
+        let offset = 0;
+        for (let b = 0; b < numBlocks; b++) {
+          const sz = blockSize + (b >= numBlocks - remainder ? 1 : 0);
+          const block = dataArr.slice(offset, offset + sz);
+          dataBlocks.push(block);
+          ecBlocks.push(rsEncode(block, ecCW));
+          offset += sz;
+        }
+
+        // Interleave
+        const interleaved = [];
+        const maxDataLen = blockSize + (remainder ? 1 : 0);
+        for (let i = 0; i < maxDataLen; i++)
+          for (const bl of dataBlocks) if (i < bl.length) interleaved.push(bl[i]);
+        for (let i = 0; i < ecCW; i++)
+          for (const bl of ecBlocks) interleaved.push(bl[i]);
+
+        // Create matrix
+        const grid = Array.from({ length: size }, () => new Int8Array(size)); // 0=white, 1=black
+        const reserved = Array.from({ length: size }, () => new Uint8Array(size)); // 1=reserved
+
+        // Finder patterns
+        const drawFinder = (cx, cy) => {
+          for (let dy = -4; dy <= 4; dy++) for (let dx = -4; dx <= 4; dx++) {
+            const x = cx + dx, y = cy + dy;
+            if (x < 0 || x >= size || y < 0 || y >= size) continue;
+            const adx = Math.abs(dx), ady = Math.abs(dy);
+            const ring = Math.max(adx, ady);
+            grid[y][x] = (ring <= 3 && ring !== 2) ? 1 : 0;
+            reserved[y][x] = 1;
+          }
+        };
+        drawFinder(3, 3);
+        drawFinder(size - 4, 3);
+        drawFinder(3, size - 4);
+
+        // Timing patterns
+        for (let i = 8; i < size - 8; i++) {
+          grid[6][i] = (i % 2 === 0) ? 1 : 0; reserved[6][i] = 1;
+          grid[i][6] = (i % 2 === 0) ? 1 : 0; reserved[i][6] = 1;
+        }
+
+        // Alignment pattern (versions 2+)
+        if (ver >= 2) {
+          const pos = [6, size - 7];
+          for (const ay of pos) for (const ax of pos) {
+            if (reserved[ay][ax]) continue;
+            for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) {
+              const adx = Math.abs(dx), ady = Math.abs(dy);
+              grid[ay + dy][ax + dx] = (adx <= 2 && ady <= 2 && !(adx === 1 && ady === 1) && (adx === 2 || ady === 2 || (adx === 0 && ady === 0))) ? 1 : 0;
+              reserved[ay + dy][ax + dx] = 1;
+            }
+          }
+        }
+
+        // Reserve format info areas
+        for (let i = 0; i < 8; i++) {
+          reserved[8][i] = 1; reserved[8][size - 1 - i] = 1;
+          reserved[i][8] = 1; reserved[size - 1 - i][8] = 1;
+        }
+        reserved[8][8] = 1;
+        grid[size - 8][8] = 1; reserved[size - 8][8] = 1; // dark module
+
+        // Place data bits
+        const allBits = [];
+        for (const cw of interleaved) for (let b = 7; b >= 0; b--) allBits.push((cw >> b) & 1);
+
+        let bitIdx = 0;
+        let upward = true;
+        for (let col = size - 1; col >= 0; col -= 2) {
+          if (col === 6) col = 5; // skip timing column
+          const rows = upward ? [...Array(size).keys()].reverse() : [...Array(size).keys()];
+          for (const row of rows) {
+            for (const c of [col, col - 1]) {
+              if (c < 0 || reserved[row][c]) continue;
+              if (bitIdx < allBits.length) {
+                grid[row][c] = allBits[bitIdx++];
+              }
+              reserved[row][c] = 1;
+            }
+          }
+          upward = !upward;
+        }
+
+        // Track data cells for masking (exclude finder, timing, alignment patterns)
+        const isData = Array.from({ length: size }, () => new Uint8Array(size));
+        bitIdx = 0; upward = true;
+        for (let col = size - 1; col >= 0; col -= 2) {
+          if (col === 6) col = 5;
+          const rows = upward ? [...Array(size).keys()].reverse() : [...Array(size).keys()];
+          for (const row of rows) {
+            for (const c of [col, col - 1]) {
+              if (c < 0) continue;
+              // Check if this was a data cell (not a pattern cell)
+              let wasReserved = false;
+              // Finder
+              if ((row <= 8 && c <= 8) || (row <= 8 && c >= size - 8) || (row >= size - 8 && c <= 8)) wasReserved = true;
+              if (row === 6 || c === 6) wasReserved = true; // timing
+              if (ver >= 2 && row >= size - 9 && row <= size - 5 && c >= size - 9 && c <= size - 5) wasReserved = true; // alignment
+              if (row === size - 8 && c === 8) wasReserved = true; // dark module
+              // Format info
+              if (row === 8 && (c <= 8 || c >= size - 8)) wasReserved = true;
+              if (c === 8 && (row <= 8 || row >= size - 8)) wasReserved = true;
+
+              if (!wasReserved) isData[row][c] = 1;
+            }
+          }
+          upward = !upward;
+        }
+
+        // Apply mask 0
+        for (let y = 0; y < size; y++) for (let x = 0; x < size; x++) {
+          if (isData[y][x] && (y + x) % 2 === 0) grid[y][x] ^= 1;
+        }
+
+        // Write format info (mask 0, EC level M = 00, mask 000)
+        // Format string for EC M, mask 0: pre-computed with BCH
+        const fmtBits = 0b101010000010010; // EC=M(00), mask=0(000) -> 101010000010010
+        const fmtPositions = [
+          // Around top-left finder
+          [8,0],[8,1],[8,2],[8,3],[8,4],[8,5],[8,7],[8,8],
+          [7,8],[5,8],[4,8],[3,8],[2,8],[1,8],[0,8],
+        ];
+        const fmtPositions2 = [
+          // Around other finders
+          [size-1,8],[size-2,8],[size-3,8],[size-4,8],[size-5,8],[size-6,8],[size-7,8],
+          [8,size-8],[8,size-7],[8,size-6],[8,size-5],[8,size-4],[8,size-3],[8,size-2],[8,size-1],
+        ];
+        for (let i = 0; i < 15; i++) {
+          const bit = (fmtBits >> (14 - i)) & 1;
+          const [y1, x1] = fmtPositions[i]; grid[y1][x1] = bit;
+          const [y2, x2] = fmtPositions2[i]; grid[y2][x2] = bit;
+        }
+
+        return { grid, size };
+      }
+
+      return { encode };
+    })();
+
     function drawQR(text) {
       const canvas = document.getElementById('qrCanvas');
       const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, 120, 120);
-      ctx.fillStyle = '#000000';
-      ctx.font = '10px monospace';
-      ctx.textAlign = 'center';
-      // Show URL text as fallback (proper QR needs a library)
-      const lines = text.match(/.{1,18}/g) || [text];
-      lines.forEach((line, i) => {
-        ctx.fillText(line, 60, 40 + i * 14);
-      });
-      ctx.font = '8px sans-serif';
-      ctx.fillStyle = '#888';
-      ctx.fillText('Scan or type URL', 60, 110);
+      try {
+        const { grid, size } = QR.encode(text);
+        const cellSize = Math.floor(120 / (size + 8)); // quiet zone of 4 cells
+        const offset = Math.floor((120 - cellSize * size) / 2);
+
+        canvas.width = 120; canvas.height = 120;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 120, 120);
+        ctx.fillStyle = '#000000';
+
+        for (let y = 0; y < size; y++) {
+          for (let x = 0; x < size; x++) {
+            if (grid[y][x]) {
+              ctx.fillRect(offset + x * cellSize, offset + y * cellSize, cellSize, cellSize);
+            }
+          }
+        }
+      } catch (e) {
+        // Fallback: show URL as text if QR generation fails
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, 120, 120);
+        ctx.fillStyle = '#000000';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'center';
+        const lines = text.match(/.{1,18}/g) || [text];
+        lines.forEach((line, i) => ctx.fillText(line, 60, 35 + i * 13));
+      }
     }
 
     // ==========================================

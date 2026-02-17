@@ -459,15 +459,14 @@
     }
 
     function highlightWord(index) {
+      // Skip annotations in word-tracking/voice modes (loop to avoid stack overflow)
+      while (index < wordElements.length && isAnnotation(words[index]) && (settings.mode === 'word-tracking' || settings.mode === 'voice')) {
+        index++;
+      }
+      currentWordIndex = index;
+
       if (index >= wordElements.length) {
         onScriptFinished();
-        return;
-      }
-
-      // Skip annotations in word-tracking/voice modes
-      if (isAnnotation(words[index]) && (settings.mode === 'word-tracking' || settings.mode === 'voice')) {
-        currentWordIndex = index + 1;
-        highlightWord(currentWordIndex);
         return;
       }
 
@@ -681,8 +680,8 @@
         // Show last spoken
         const result = event.results[event.results.length - 1];
         if (result) {
-          const words = result[0].transcript.trim().split(/\s+/).slice(-3);
-          lastSpokenEl.textContent = words.join(' ');
+          const spokenWords = result[0].transcript.trim().split(/\s+/).slice(-3);
+          lastSpokenEl.textContent = spokenWords.join(' ');
         }
 
         if (!scrolling) {
