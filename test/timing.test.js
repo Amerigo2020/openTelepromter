@@ -59,3 +59,7 @@ test('projects fast scroll speeds beyond a natural speaking pace', () => {
   assert.equal(timing.projectSeconds(0, 0, 200, 480), 25);
   assert.equal(timing.projectSeconds(10, 80, 120, 480), 25);
 });
+
+test('punctuation-only tokens are not spoken words', () => {
+  assert.deepEqual(timing.countWords('Hallo ... Welt ---'), { all: 4, spoken: 2 });
+});

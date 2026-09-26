@@ -4,7 +4,7 @@
 // Shared by the control window and the prompter overlay.
 // ==========================================
 
-const { tokenize, isAnnotation } = require('./speech-tracker');
+const { tokenize, isSpoken } = require('./speech-tracker');
 
 const DEFAULT_WPM = 150;
 const MIN_WPM = 60;
@@ -14,7 +14,7 @@ const LEARN_WEIGHT = 0.3;
 
 function countWords(text) {
   const words = tokenize(text);
-  const spoken = words.filter(w => !isAnnotation(w)).length;
+  const spoken = words.filter(isSpoken).length;
   return { all: words.length, spoken };
 }
 

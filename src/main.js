@@ -518,14 +518,25 @@ ipcMain.on('take-started', () => {
   // Remotes leave the "Done" screen of the previous take
   remoteState.currentIndex = 0;
   broadcastRemoteState();
-  // A restart from the completion screen runs again
+  // A restart from the completion screen runs again, unpaused
   updateTrayMenu(true);
+  if (controlWindow) {
+    controlWindow.webContents.send('prompter-paused', false);
+  }
 });
 
 ipcMain.on('prompter-paused', (event, paused) => {
   if (externalWindow) {
     externalWindow.webContents.send('scroll-command', paused ? 'paused' : 'resumed');
   }
+  if (controlWindow) {
+    controlWindow.webContents.send('prompter-paused', paused);
+  }
+});
+
+// The prompter finished for good (e.g. take loop switched off during the break)
+ipcMain.on('prompter-run-ended', () => {
+  updateTrayMenu(false);
 });
 
 ipcMain.on('take-clock-started', () => {

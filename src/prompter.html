@@ -282,7 +282,7 @@
 
   <script>
     const { ipcRenderer } = require('electron');
-    const { SpeechTracker, tokenize, isAnnotation } = require('./speech-tracker');
+    const { SpeechTracker, tokenize, isAnnotation, isSpoken } = require('./speech-tracker');
     const timing = require('./timing');
 
     // ==========================================
@@ -313,6 +313,9 @@
     let take = { number: 0, startMs: null, startWords: 0, manualNav: false };
 
     const SILENCE_MS = 1200;
+    // Failures that won't go away by trying again in the next take
+    const PERMANENT_SPEECH_ERRORS = new Set(['not supported', 'not-allowed', 'service-not-allowed']);
+    let speechStartMs = null;
     const FATAL_SPEECH_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'language-not-supported', 'audio-capture']);
 
     // Elements
@@ -366,6 +369,7 @@
       if (isFinished) return;
 
       if (modeChanged) {
+        retrySpeech();
         startMode(data.mode);
       } else if (speedChanged && settings.mode === 'classic') {
         // Restart classic with new speed
@@ -409,11 +413,8 @@
         contentBefore.push(contentWords);
         const span = document.createElement('span');
         span.className = 'word';
-        if (isAnnotation(word)) {
-          span.classList.add('annotation');
-        } else {
-          contentWords++;
-        }
+        if (isAnnotation(word)) span.classList.add('annotation');
+        if (isSpoken(word)) contentWords++;
         span.textContent = word + ' ';
         span.dataset.index = i;
 
@@ -465,16 +466,29 @@
       clearTimeout(closeTimer);
       isFinished = false;
       take = { number: take.number + 1, startMs: null, startWords: 0, manualNav: false };
+      speechStartMs = null;
+      retrySpeech();
       initializeText(settings.text || '');
       startElapsedTimer();
-      // Restarts and loops happen here, so the external display restarts along
+      // Restarts and loops happen here, so the external display (and the
+      // control window's pause state) restart along
       if (!isExternal && take.number > 1) ipcRenderer.send('take-started');
       startMode(settings.mode);
     }
 
-    function startTakeClock(wordsDone) {
+    // Transient speech failures (network, start errors) get another chance
+    function retrySpeech() {
+      if (speechUnavailable && !PERMANENT_SPEECH_ERRORS.has(speechUnavailable)) {
+        speechUnavailable = null;
+        lastSpokenEl.classList.remove('error');
+        lastSpokenEl.textContent = '';
+      }
+    }
+
+    // atMs: when the take actually began (e.g. speech start before recognition)
+    function startTakeClock(wordsDone, atMs) {
       if (take.startMs !== null) return;
-      take.startMs = clockMs();
+      take.startMs = atMs !== undefined ? atMs : clockMs();
       take.startWords = wordsDone;
       // External displays start their clock together with the primary
       if (!isExternal) ipcRenderer.send('take-clock-started');
@@ -588,7 +602,8 @@
     function highlightWord(index) {
       if (isFinished) return;
       // Skip annotations in word-tracking/voice modes (loop to avoid stack overflow)
-      while (index < wordElements.length && isAnnotation(words[index]) && (settings.mode === 'word-tracking' || settings.mode === 'voice')) {
+      const skipUnspoken = timingSettings().mode !== 'classic';
+      while (index < wordElements.length && skipUnspoken && !isSpoken(words[index])) {
         index++;
       }
       currentWordIndex = index;
@@ -665,6 +680,7 @@
     }
 
     function showDone(summary) {
+      if (!isExternal) ipcRenderer.send('prompter-run-ended');
       doneDetail.textContent = summary;
       completionScreen.classList.add('visible');
       // Auto-close after 3 seconds
@@ -765,10 +781,21 @@
           const heard = finals.concat(interim);
           if (heard.length) lastSpokenEl.textContent = heard.slice(-3).join(' ');
 
-          const before = tracker.cursor;
-          const next = tracker.update(finals, interim);
-          if (next === before) return;
-          if (next > before) startTakeClock(Math.max(0, tracker.wordsBefore(next) - 1));
+          const expected = tracker.cursor;
+          let next = tracker.update(finals, interim);
+          // Only finalized speech may finish the take; interim results can be revised
+          const total = tracker.totalWords;
+          if (total && tracker.wordsBefore(next) >= total && tracker.wordsBefore(tracker.committed.cursor) < total) {
+            next = tracker.contentIndex[total - 1];
+          }
+          while (next < words.length && !isSpoken(words[next])) next++;
+          if (next === currentWordIndex) return;
+          if (next > currentWordIndex) {
+            // The take began when speaking started, not when it was recognized
+            const now = clockMs();
+            const began = speechStartMs !== null && now - speechStartMs < 10000 ? speechStartMs : now;
+            startTakeClock(tracker.wordsBefore(expected), began);
+          }
           moveTo(next);
         },
       });
@@ -830,6 +857,10 @@
       let failures = 0;
 
       // Every (re)start begins a fresh result list
+      rec.onspeechstart = () => {
+        if (!isPaused) speechStartMs = clockMs();
+      };
+
       rec.onstart = () => {
         if (onSession) onSession();
       };
@@ -931,7 +962,10 @@
     function togglePause() {
       // Between takes, pausing holds the countdown
       if (isFinished) {
-        if (pageCountdown.classList.contains('visible')) isPaused = !isPaused;
+        if (pageCountdown.classList.contains('visible')) {
+          isPaused = !isPaused;
+          if (!isExternal) ipcRenderer.send('prompter-paused', isPaused);
+        }
         return;
       }
       isPaused = !isPaused;

@@ -34,6 +34,11 @@ function tokenize(text) {
   return String(text || '').split(/\s+/).filter(w => w.length > 0);
 }
 
+// Words that are actually spoken: no annotations, no punctuation-only tokens
+function isSpoken(word) {
+  return !isAnnotation(word) && normalizeWord(word) !== '';
+}
+
 function isAnnotation(word) {
   // Bracketed text like [pause], [beat], [slide]
   if (/^\[.*\]$/.test(word)) return true;
@@ -103,7 +108,7 @@ class SpeechTracker {
     this.rankAt = new Int32Array(words.length + 1);
     words.forEach((w, i) => {
       this.rankAt[i] = this.contentNorm.length;
-      const norm = isAnnotation(w) ? '' : normalizeWord(w);
+      const norm = isSpoken(w) ? normalizeWord(w) : '';
       if (norm) {
         this.contentIndex.push(i);
         this.contentNorm.push(norm);
@@ -270,6 +275,7 @@ module.exports = {
   SpeechTracker,
   tokenize,
   isAnnotation,
+  isSpoken,
   normalizeWord,
   wordsMatch,
   editDistance,

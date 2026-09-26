@@ -1877,6 +1877,13 @@
 
     ipcRenderer.on('prompter-closed', resetUI);
 
+    // The overlay can pause, resume or restart by itself (Space, R, tray)
+    ipcRenderer.on('prompter-paused', (event, paused) => {
+      if (!isRunning) return;
+      pauseBtn.innerHTML = paused ? '&#9654; Resume' : '&#9208; Pause';
+      statusText.textContent = paused ? 'Paused' : 'Running - ' + currentMode.replace('-', ' ');
+    });
+
     // Tray commands
     ipcRenderer.on('tray-start', startPrompter);
     ipcRenderer.on('tray-stop', stopPrompter);
