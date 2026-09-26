@@ -373,9 +373,9 @@
         if (take.startMs !== null) take.manualNav = true;
         retrySpeech();
         startMode(data.mode);
-      } else if (speedChanged && settings.mode === 'classic') {
-        // Restart classic with new speed
-        if (scrollInterval) clearInterval(scrollInterval);
+      } else if (speedChanged && timingSettings().mode === 'classic' && scrollInterval) {
+        // Restart classic with new speed (also a fallback from a speech mode)
+        clearInterval(scrollInterval);
         startClassicMode();
       }
     });
