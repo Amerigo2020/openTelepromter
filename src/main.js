@@ -521,10 +521,15 @@ ipcMain.on('prompter-progress', (event, data) => {
   broadcastRemoteState();
 });
 
-ipcMain.on('prompter-finished', () => {
+ipcMain.on('prompter-finished', (event, result = {}) => {
   remoteState.currentIndex = remoteState.words.length;
   broadcastRemoteState();
-  updateTrayMenu(false);
+  // Take duration and pace for the Reels & Timing panel
+  if (controlWindow) {
+    controlWindow.webContents.send('take-finished', result);
+  }
+  // In take loop the prompter keeps running
+  if (!result.loop) updateTrayMenu(false);
 });
 
 ipcMain.on('save-settings', (event, settings) => {

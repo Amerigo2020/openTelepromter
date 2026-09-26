@@ -7,9 +7,17 @@ Inspired by [Textream](https://github.com/f/textream) (macOS only), openTeleprom
 ## Features
 
 ### 3 Guidance Modes
-- **Word Tracking** — Real-time speech recognition highlights words as you speak. Fuzzy matching with edit-distance tolerance, annotation skipping, and auto-retry. All processing on-device via Web Speech API.
+- **Word Tracking** — Speech recognition follows you through the script and always moves to the last word it heard. It tolerates a few dropped or misheard words, but only jumps to another sentence (skipped ahead or started over) once several words in a row clearly match there (2–4 words, configurable). Fuzzy matching handles inflections, umlauts and numbers ("drei" = "3"), and annotations are skipped. Uses the Chromium Web Speech API; if recognition is unavailable, the overlay says so and falls back to Classic Scroll.
 - **Classic Scroll** — Constant-speed auto-scrolling (0.5–8 words/sec). No microphone required.
 - **Voice-Activated Scroll** — Scrolls when you speak, pauses during silence. Natural, hands-free pacing.
+
+### Reels & Timing
+- Estimated speaking time per page in the status bar and the Reels & Timing panel
+- Learns your speaking pace from finished Word Tracking takes (takes with jumps or manual navigation are not used)
+- Target length (15 s, 30 s, 60 s, 90 s, 3 min) with a "fits" / "too long, cut ~N words" hint
+- Overlay shows the take time and the projected total length, turning orange/red when the take is about to exceed the target
+- Take loop: after the last word, a short break (3/5/10 s), then the next take starts from the top
+- Every take's length is listed in the control window; restart a take anytime with `R` or the Restart button
 
 ### 3 Display Modes
 - **Floating** — Draggable, transparent overlay with adjustable opacity. Always on top.
@@ -80,6 +88,7 @@ Inspired by [Textream](https://github.com/f/textream) (macOS only), openTeleprom
 | `Ctrl+O` | Open file |
 | `Ctrl+S` | Save file |
 | `Space` (overlay) | Pause / Resume |
+| `R` (overlay) | Restart take from the top |
 | `Arrow Up/Down` (overlay) | Jump 5 words |
 | `Arrow Left/Right` (overlay) | Jump 1 word |
 | Mouse scroll (overlay) | Jump 3 words |
@@ -95,6 +104,12 @@ Inspired by [Textream](https://github.com/f/textream) (macOS only), openTeleprom
 ```bash
 npm install
 npm start
+```
+
+### Test
+
+```bash
+npm test
 ```
 
 ### Build
@@ -114,6 +129,9 @@ src/
   main.js          — Electron main process (windows, tray, server, IPC)
   control.html     — Editor/control UI (script input, settings, pages)
   prompter.html    — Teleprompter overlay (display, modes, tracking)
+  speech-tracker.js — Aligns recognized speech with the script (Word Tracking)
+  timing.js        — Speaking-time estimates, learned pace, Reel targets
+test/              — Unit tests (node --test)
 ```
 
 ## Tech Stack
