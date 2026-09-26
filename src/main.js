@@ -560,6 +560,9 @@ ipcMain.on('prompter-finished', (event, result = {}) => {
   if (controlWindow) {
     controlWindow.webContents.send('take-finished', result);
   }
+  if (externalWindow) {
+    externalWindow.webContents.send('sync-finished', result);
+  }
   // In take loop the prompter keeps running
   if (!result.loop) updateTrayMenu(false);
 });

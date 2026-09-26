@@ -369,6 +369,8 @@
       if (isFinished) return;
 
       if (modeChanged) {
+        // The pace measured so far belongs to the previous mode
+        if (take.startMs !== null) take.manualNav = true;
         retrySpeech();
         startMode(data.mode);
       } else if (speedChanged && settings.mode === 'classic') {
@@ -383,6 +385,14 @@
       if (cmd === 'toggle-pause') togglePause();
       if (cmd === 'restart-take') startTake();
 
+    });
+
+    // External displays show the primary's completion screen until the next take
+    ipcRenderer.on('sync-finished', (event, data) => {
+      if (!isExternal) return;
+      progressFill.style.width = '100%';
+      doneDetail.textContent = data.summary || '';
+      completionScreen.classList.add('visible');
     });
 
     // External displays show the primary's take time as is
@@ -505,6 +515,12 @@
     // Skipped or navigated words were not spoken, so they tell nothing about the pace
     function takeDisturbed() {
       return take.manualNav || (!!tracker && tracker.jumps > 0);
+    }
+
+    // The take began when speaking started, not when it was recognized
+    function speechBegan() {
+      const now = clockMs();
+      return speechStartMs !== null && now - speechStartMs < 10000 ? speechStartMs : now;
     }
 
     // Timing follows the mode actually running (speech may have fallen back)
@@ -710,6 +726,7 @@
         mode: settings.mode,
         target: settings.reelTarget || 0,
         loop: !!settings.takeLoop,
+        summary: takeSummary(seconds),
       };
       ipcRenderer.send('prompter-finished', result);
       return result;
@@ -758,7 +775,8 @@
     // Advances one word; the tick after the last word finishes the script
     function scrollTick() {
       if (isPaused || isFinished) return;
-      startTakeClock(progressCount(currentWordIndex));
+      // Voice Scroll starts on speech: count from when speaking began
+      startTakeClock(progressCount(currentWordIndex), recognition ? speechBegan() : undefined);
       highlightWord(currentWordIndex);
       if (!isFinished) currentWordIndex++;
     }
@@ -799,10 +817,7 @@
           while (next < words.length && !isSpoken(words[next])) next++;
           if (next === currentWordIndex) return;
           if (next > currentWordIndex) {
-            // The take began when speaking started, not when it was recognized
-            const now = clockMs();
-            const began = speechStartMs !== null && now - speechStartMs < 10000 ? speechStartMs : now;
-            startTakeClock(tracker.wordsBefore(expected), began);
+            startTakeClock(tracker.wordsBefore(expected), speechBegan());
           }
           moveTo(next);
         },
