@@ -116,6 +116,17 @@ class SpeechTracker {
     });
     this.rankAt[words.length] = this.contentNorm.length;
     this._matchCache = new Map();
+    // Distinct script words by length, so matching scans only plausible candidates
+    this._vocab = new Map();
+    this.contentNorm.forEach((w, rank) => {
+      if (!this._vocab.has(w)) this._vocab.set(w, []);
+      this._vocab.get(w).push(rank);
+    });
+    this._byLength = new Map();
+    for (const w of this._vocab.keys()) {
+      if (!this._byLength.has(w.length)) this._byLength.set(w.length, []);
+      this._byLength.get(w.length).push(w);
+    }
     this.committed = { cursor: 0, pending: [], jumps: 0, backJumps: 0 };
     this.cursor = 0;
     this._backJumps = 0;
@@ -252,9 +263,15 @@ class SpeechTracker {
     let set = this._matchCache.get(word);
     if (!set) {
       set = new Set();
-      this.contentNorm.forEach((w, rank) => {
-        if (wordsMatch(word, w)) set.add(rank);
-      });
+      // wordsMatch allows at most 3 edits or a prefix covering 60% of the longer word
+      const len = word.length;
+      const minLen = Math.max(1, Math.min(Math.ceil(len * 0.6), len - 3));
+      const maxLen = Math.max(Math.floor(len / 0.6), len + 3);
+      for (let l = minLen; l <= maxLen; l++) {
+        for (const w of this._byLength.get(l) || []) {
+          if (wordsMatch(word, w)) this._vocab.get(w).forEach(rank => set.add(rank));
+        }
+      }
       if (this._matchCache.size > 2000) this._matchCache.clear();
       this._matchCache.set(word, set);
     }

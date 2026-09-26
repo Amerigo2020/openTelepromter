@@ -382,10 +382,14 @@
     ipcRenderer.on('scroll-command', (event, cmd) => {
       if (cmd === 'toggle-pause') togglePause();
       if (cmd === 'restart-take') startTake();
-      if (cmd === 'take-clock-started') startTakeClock(0);
-      if (cmd === 'take-finished' && isExternal) pauseClock();
-      if (cmd === 'paused' && !isPaused) togglePause();
-      if (cmd === 'resumed' && isPaused) togglePause();
+
+    });
+
+    // External displays show the primary's take time as is
+    ipcRenderer.on('sync-time', (event, data) => {
+      if (!isExternal) return;
+      elapsedTimeEl.textContent = data.text;
+      elapsedTimeEl.dataset.status = data.status;
     });
 
     // Sync from primary (for external display)
@@ -490,8 +494,6 @@
       if (take.startMs !== null) return;
       take.startMs = atMs !== undefined ? atMs : clockMs();
       take.startWords = wordsDone;
-      // External displays start their clock together with the primary
-      if (!isExternal) ipcRenderer.send('take-clock-started');
     }
 
     // Words before an index as timing counts them: Classic Scroll spends a
@@ -535,6 +537,8 @@
       clockAccum = 0;
       clockStart = performance.now();
       if (elapsedTimer) clearInterval(elapsedTimer);
+      // External displays get their time from the primary (sync-time)
+      if (isExternal) return;
       elapsedTimer = setInterval(renderTime, 250);
       renderTime();
     }
@@ -550,10 +554,14 @@
           ? timing.estimateSeconds(words.join(' '), timingSettings())
           : timing.projectSeconds(elapsed, takeDisturbed() ? 0 : wordsDone - take.startWords, wordsLeft, timing.modeWpm(timingSettings()));
       }
-      elapsedTimeEl.textContent = isFinished
+      const text = isFinished
         ? timing.formatDuration(elapsed)
         : `${timing.formatDuration(elapsed)} / ~${timing.formatDuration(total)}`;
-      elapsedTimeEl.dataset.status = timing.targetStatus(total, settings.reelTarget);
+      const status = timing.targetStatus(total, settings.reelTarget);
+      if (text === elapsedTimeEl.textContent && status === elapsedTimeEl.dataset.status) return;
+      elapsedTimeEl.textContent = text;
+      elapsedTimeEl.dataset.status = status;
+      ipcRenderer.send('prompter-time', { text, status });
     }
 
     // ==========================================
@@ -602,7 +610,7 @@
     function highlightWord(index) {
       if (isFinished) return;
       // Skip annotations in word-tracking/voice modes (loop to avoid stack overflow)
-      const skipUnspoken = timingSettings().mode !== 'classic';
+      const skipUnspoken = !isExternal && timingSettings().mode !== 'classic';
       while (index < wordElements.length && skipUnspoken && !isSpoken(words[index])) {
         index++;
       }
@@ -914,6 +922,8 @@
       speechUnavailable = error;
       stopAllModes();
       tracker = null;
+      // The rest of the take scrolls at a fixed speed: the measured speech pace no longer applies
+      take.manualNav = true;
       showSpeechError(error);
       if (!isFinished) startClassicMode();
     }

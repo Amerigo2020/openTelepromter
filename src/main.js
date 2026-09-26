@@ -526,9 +526,6 @@ ipcMain.on('take-started', () => {
 });
 
 ipcMain.on('prompter-paused', (event, paused) => {
-  if (externalWindow) {
-    externalWindow.webContents.send('scroll-command', paused ? 'paused' : 'resumed');
-  }
   if (controlWindow) {
     controlWindow.webContents.send('prompter-paused', paused);
   }
@@ -539,9 +536,10 @@ ipcMain.on('prompter-run-ended', () => {
   updateTrayMenu(false);
 });
 
-ipcMain.on('take-clock-started', () => {
+// The external display mirrors the primary's take time
+ipcMain.on('prompter-time', (event, data) => {
   if (externalWindow) {
-    externalWindow.webContents.send('scroll-command', 'take-clock-started');
+    externalWindow.webContents.send('sync-time', data);
   }
 });
 
@@ -561,10 +559,6 @@ ipcMain.on('prompter-finished', (event, result = {}) => {
   // Take duration and pace for the Reels & Timing panel
   if (controlWindow) {
     controlWindow.webContents.send('take-finished', result);
-  }
-  // The external display's take clock stops with the primary's
-  if (externalWindow) {
-    externalWindow.webContents.send('scroll-command', 'take-finished');
   }
   // In take loop the prompter keeps running
   if (!result.loop) updateTrayMenu(false);
