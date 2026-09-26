@@ -379,6 +379,7 @@
       if (cmd === 'toggle-pause') togglePause();
       if (cmd === 'restart-take') startTake();
       if (cmd === 'take-clock-started') startTakeClock(0);
+      if (cmd === 'take-finished' && isExternal) pauseClock();
       if (cmd === 'paused' && !isPaused) togglePause();
       if (cmd === 'resumed' && isPaused) togglePause();
     });
@@ -485,6 +486,11 @@
       return timingSettings().mode === 'classic' ? index : (contentBefore[index] || 0);
     }
 
+    // Skipped or navigated words were not spoken, so they tell nothing about the pace
+    function takeDisturbed() {
+      return take.manualNav || (!!tracker && tracker.jumps > 0);
+    }
+
     // Timing follows the mode actually running (speech may have fallen back)
     function timingSettings() {
       return speechUnavailable ? { ...settings, mode: 'classic' } : settings;
@@ -528,7 +534,7 @@
         const wordsLeft = progressCount(words.length) - wordsDone;
         total = take.startMs === null
           ? timing.estimateSeconds(words.join(' '), timingSettings())
-          : timing.projectSeconds(elapsed, wordsDone - take.startWords, wordsLeft, timing.modeWpm(timingSettings()));
+          : timing.projectSeconds(elapsed, takeDisturbed() ? 0 : wordsDone - take.startWords, wordsLeft, timing.modeWpm(timingSettings()));
       }
       elapsedTimeEl.textContent = isFinished
         ? timing.formatDuration(elapsed)
@@ -671,7 +677,7 @@
       const seconds = takeSeconds();
       const wordsSpoken = Math.max(0, progressCount(words.length) - take.startWords);
       // Only undisturbed word-tracking takes show the natural speaking pace
-      const clean = settings.mode === 'word-tracking' && tracker && tracker.jumps === 0 && !take.manualNav;
+      const clean = settings.mode === 'word-tracking' && tracker && !takeDisturbed();
       const result = {
         take: take.number,
         seconds,

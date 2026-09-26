@@ -515,6 +515,9 @@ ipcMain.on('take-started', () => {
   if (externalWindow) {
     externalWindow.webContents.send('scroll-command', 'restart-take');
   }
+  // Remotes leave the "Done" screen of the previous take
+  remoteState.currentIndex = 0;
+  broadcastRemoteState();
 });
 
 ipcMain.on('prompter-paused', (event, paused) => {
@@ -545,6 +548,10 @@ ipcMain.on('prompter-finished', (event, result = {}) => {
   // Take duration and pace for the Reels & Timing panel
   if (controlWindow) {
     controlWindow.webContents.send('take-finished', result);
+  }
+  // The external display's take clock stops with the primary's
+  if (externalWindow) {
+    externalWindow.webContents.send('scroll-command', 'take-finished');
   }
   // In take loop the prompter keeps running
   if (!result.loop) updateTrayMenu(false);
