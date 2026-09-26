@@ -359,7 +359,8 @@
     ipcRenderer.on('apply-settings', (event, data) => {
       const modeChanged = settings.mode !== data.mode;
       const speedChanged = settings.speed !== data.speed;
-      settings = data;
+      // The page being recorded stays fixed; the editor may show another one
+      settings = { ...data, text: settings.text, pageIndex: settings.pageIndex, totalPages: settings.totalPages };
       applyVisualSettings(data);
       if (tracker) tracker.options.jumpMinMatches = data.jumpMinMatches || 3;
       if (isFinished) return;
@@ -464,6 +465,8 @@
       startElapsedTimer();
       // External displays only mirror the primary, so their clock runs right away
       if (isExternal) startTakeClock(0);
+      // Restarts and loops happen here, so the external display restarts along
+      else if (take.number > 1) ipcRenderer.send('take-started');
       startMode(settings.mode);
     }
 
@@ -713,8 +716,11 @@
 
     function startWordTracking() {
       tracker = new SpeechTracker(words, { jumpMinMatches: settings.jumpMinMatches || 3 });
-      // Show where to start reading
-      highlightWord(0);
+      // Continue from the current word when switching modes mid-take
+      tracker.setCursor(currentWordIndex);
+      if (currentWordIndex > 0) take.manualNav = true;
+      // Show where to (continue) reading
+      highlightWord(currentWordIndex);
 
       const started = startRecognition({
         onSession: () => { if (tracker) tracker.newSession(); },

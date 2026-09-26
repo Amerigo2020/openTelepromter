@@ -511,6 +511,12 @@ ipcMain.on('scroll-command', (event, cmd) => {
   }
 });
 
+ipcMain.on('take-started', () => {
+  if (externalWindow) {
+    externalWindow.webContents.send('scroll-command', 'restart-take');
+  }
+});
+
 ipcMain.on('prompter-progress', (event, data) => {
   // Sync to external display
   if (externalWindow) {

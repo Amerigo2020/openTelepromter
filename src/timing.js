@@ -53,8 +53,10 @@ function blendWpm(learned, measured) {
 }
 
 // Expected total length of a running take, based on its pace so far
+// Not clamped: scroll modes may run far outside a natural speaking pace
 function projectSeconds(elapsed, wordsDone, wordsLeft, fallbackWpm) {
-  const wpm = measureWpm(wordsDone, elapsed) || clampWpm(fallbackWpm);
+  const measured = wordsDone >= 10 && elapsed >= 5 ? (wordsDone / elapsed) * 60 : 0;
+  const wpm = measured || Number(fallbackWpm) || DEFAULT_WPM;
   return elapsed + (wordsLeft / wpm) * 60;
 }
 

@@ -53,3 +53,9 @@ test('formats durations', () => {
   assert.equal(timing.formatDuration(65.4), '1:05');
   assert.equal(timing.formatDuration(-3), '0:00');
 });
+
+test('projects fast scroll speeds beyond a natural speaking pace', () => {
+  // Classic Scroll at 8 words/sec: 200 words take 25 s
+  assert.equal(timing.projectSeconds(0, 0, 200, 480), 25);
+  assert.equal(timing.projectSeconds(10, 80, 120, 480), 25);
+});
