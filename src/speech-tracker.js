@@ -114,6 +114,7 @@ class SpeechTracker {
     this.committed = { cursor: 0, pending: [], jumps: 0, backJumps: 0 };
     this.cursor = 0;
     this._backJumps = 0;
+    this._maxJumps = 0;
     this.newSession();
   }
 
@@ -121,8 +122,9 @@ class SpeechTracker {
     return this.contentNorm.length;
   }
 
+  // Includes jumps made on interim results, even if they were revised later
   get jumps() {
-    return this.committed.jumps;
+    return Math.max(this.committed.jumps, this._maxJumps);
   }
 
   // Number of content words before a script index
@@ -166,6 +168,7 @@ class SpeechTracker {
     // only a deliberate backward jump may move it back.
     const jumpedBack = state.backJumps !== this._backJumps;
     this._backJumps = state.backJumps;
+    this._maxJumps = Math.max(this._maxJumps, state.jumps);
     if (state.cursor > this.cursor || jumpedBack) this.cursor = state.cursor;
     return this.cursor;
   }

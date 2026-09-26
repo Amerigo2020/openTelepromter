@@ -156,3 +156,11 @@ test('normalizes and compares words', () => {
   assert.ok(!wordsMatch('der', 'den'));
   assert.ok(!wordsMatch('haus', 'hausaufgaben'));
 });
+
+test('jumps on interim results count even before they are final', () => {
+  const t = tracker(REEL);
+  const s = session(t);
+  sayWords(s, 'Heute geht es um Reels');
+  assert.equal(s.interim('Zweitens solltet ihr'), 16);
+  assert.equal(t.jumps, 1);
+});

@@ -517,6 +517,12 @@ ipcMain.on('take-started', () => {
   }
 });
 
+ipcMain.on('take-clock-started', () => {
+  if (externalWindow) {
+    externalWindow.webContents.send('scroll-command', 'take-clock-started');
+  }
+});
+
 ipcMain.on('prompter-progress', (event, data) => {
   // Sync to external display
   if (externalWindow) {
