@@ -750,6 +750,8 @@
       if (currentWordIndex > 0) take.manualNav = true;
       // Show where to (continue) reading
       highlightWord(currentWordIndex);
+      // A page of only annotations finishes right away: no microphone needed
+      if (isFinished) return;
 
       const started = startRecognition({
         onSession: () => { if (tracker) tracker.newSession(); },
@@ -815,7 +817,9 @@
     function startRecognition({ onResult, onSession, onSilence }) {
       const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
       if (!SpeechRecognition || speechUnavailable) {
-        showSpeechError(speechUnavailable || 'not supported');
+        // Callers fall back to Classic Scroll; timing follows that fallback
+        speechUnavailable = speechUnavailable || 'not supported';
+        showSpeechError(speechUnavailable);
         return false;
       }
 
@@ -867,6 +871,8 @@
         return true;
       } catch (e) {
         recognition = null;
+        speechUnavailable = 'start failed';
+        showSpeechError(speechUnavailable);
         return false;
       }
     }
@@ -933,6 +939,11 @@
       if (!isExternal) ipcRenderer.send('prompter-paused', isPaused);
       if (isPaused) {
         pauseClock();
+        // Voice Scroll restarts only on new speech after resuming
+        if (recognition && scrollInterval) {
+          clearInterval(scrollInterval);
+          scrollInterval = null;
+        }
         if (recognition) {
           isListening = false;
           try { recognition.stop(); } catch (e) {}

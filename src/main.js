@@ -518,6 +518,8 @@ ipcMain.on('take-started', () => {
   // Remotes leave the "Done" screen of the previous take
   remoteState.currentIndex = 0;
   broadcastRemoteState();
+  // A restart from the completion screen runs again
+  updateTrayMenu(true);
 });
 
 ipcMain.on('prompter-paused', (event, paused) => {
