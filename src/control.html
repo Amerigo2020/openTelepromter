@@ -1349,7 +1349,7 @@
 
     // Every finished take is listed; clean word-tracking takes teach the pace
     ipcRenderer.on('take-finished', (event, result) => {
-      if (!result || !(result.seconds >= 1)) return;
+      if (!result) return;
       takes.push({ ...result, n: result.take || takes.length + 1 });
       if (result.wpm) {
         learnedWpm = timing.blendWpm(learnedWpm, result.wpm);

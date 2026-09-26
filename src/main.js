@@ -517,6 +517,12 @@ ipcMain.on('take-started', () => {
   }
 });
 
+ipcMain.on('prompter-paused', (event, paused) => {
+  if (externalWindow) {
+    externalWindow.webContents.send('scroll-command', paused ? 'paused' : 'resumed');
+  }
+});
+
 ipcMain.on('take-clock-started', () => {
   if (externalWindow) {
     externalWindow.webContents.send('scroll-command', 'take-clock-started');

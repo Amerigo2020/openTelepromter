@@ -379,6 +379,8 @@
       if (cmd === 'toggle-pause') togglePause();
       if (cmd === 'restart-take') startTake();
       if (cmd === 'take-clock-started') startTakeClock(0);
+      if (cmd === 'paused' && !isPaused) togglePause();
+      if (cmd === 'resumed' && isPaused) togglePause();
     });
 
     // Sync from primary (for external display)
@@ -477,6 +479,12 @@
       if (!isExternal) ipcRenderer.send('take-clock-started');
     }
 
+    // Words before an index as timing counts them: Classic Scroll spends a
+    // tick on every token, the speech modes skip annotations
+    function progressCount(index) {
+      return timingSettings().mode === 'classic' ? index : (contentBefore[index] || 0);
+    }
+
     // Timing follows the mode actually running (speech may have fallen back)
     function timingSettings() {
       return speechUnavailable ? { ...settings, mode: 'classic' } : settings;
@@ -516,8 +524,8 @@
       const elapsed = takeSeconds();
       let total = elapsed;
       if (!isFinished) {
-        const wordsDone = contentBefore[Math.min(currentWordIndex, words.length)] || 0;
-        const wordsLeft = contentBefore[words.length] - wordsDone;
+        const wordsDone = progressCount(Math.min(currentWordIndex, words.length));
+        const wordsLeft = progressCount(words.length) - wordsDone;
         total = take.startMs === null
           ? timing.estimateSeconds(words.join(' '), timingSettings())
           : timing.projectSeconds(elapsed, wordsDone - take.startWords, wordsLeft, timing.modeWpm(timingSettings()));
@@ -634,26 +642,34 @@
       const summary = takeSummary(result.seconds);
 
       if (settings.takeLoop) {
-        // Take loop: short break, then the next take starts from the top
-        showCountdown(settings.loopDelay || 3, 'Next take...', summary, startTake);
+        // Take loop: short break, then the next take starts from the top,
+        // unless the loop was switched off meanwhile
+        showCountdown(settings.loopDelay || 3, 'Next take...', summary, () => {
+          if (settings.takeLoop) startTake();
+          else showDone(summary);
+        });
       } else if (settings.autoNextPage && settings.pageIndex < settings.totalPages - 1) {
         showCountdown(settings.autoNextDelay || 3, 'Next page...', summary, () => {
           // Signal control window to advance page
           ipcRenderer.send('scroll-command', 'page-finished');
         });
       } else {
-        doneDetail.textContent = summary;
-        completionScreen.classList.add('visible');
-        // Auto-close after 3 seconds
-        closeTimer = setTimeout(() => {
-          window.close();
-        }, 3000);
+        showDone(summary);
       }
+    }
+
+    function showDone(summary) {
+      doneDetail.textContent = summary;
+      completionScreen.classList.add('visible');
+      // Auto-close after 3 seconds
+      closeTimer = setTimeout(() => {
+        window.close();
+      }, 3000);
     }
 
     function reportTake() {
       const seconds = takeSeconds();
-      const wordsSpoken = Math.max(0, contentBefore[words.length] - take.startWords);
+      const wordsSpoken = Math.max(0, progressCount(words.length) - take.startWords);
       // Only undisturbed word-tracking takes show the natural speaking pace
       const clean = settings.mode === 'word-tracking' && tracker && tracker.jumps === 0 && !take.manualNav;
       const result = {
@@ -712,7 +728,7 @@
     // Advances one word; the tick after the last word finishes the script
     function scrollTick() {
       if (isPaused || isFinished) return;
-      startTakeClock(contentBefore[currentWordIndex] || 0);
+      startTakeClock(progressCount(currentWordIndex));
       highlightWord(currentWordIndex);
       if (!isFinished) currentWordIndex++;
     }
@@ -769,12 +785,17 @@
           if (result) {
             lastSpokenEl.textContent = tokenize(result[0].transcript).slice(-3).join(' ');
           }
-          if (!scrollInterval) scrollInterval = setInterval(scrollTick, intervalMs);
+          if (!scrollInterval) {
+            scrollTick();
+            scrollInterval = setInterval(scrollTick, intervalMs);
+          }
         },
         // Stop scrolling while the speaker is silent
         onSilence: () => {
           clearInterval(scrollInterval);
           scrollInterval = null;
+          // The last word was reached: finish instead of waiting for more speech
+          if (currentWordIndex >= words.length) scrollTick();
         },
       });
 
@@ -902,6 +923,8 @@
         return;
       }
       isPaused = !isPaused;
+      // The external display's take clock pauses along
+      if (!isExternal) ipcRenderer.send('prompter-paused', isPaused);
       if (isPaused) {
         pauseClock();
         if (recognition) {
