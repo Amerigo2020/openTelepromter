@@ -386,6 +386,65 @@
     .btn-stop { background: #c0392b; color: white; display: none; }
     .btn-stop:hover { background: #e74c3c; }
 
+    /* Reels & Timing */
+    .timing-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 10px;
+    }
+    .timing-row .control-group { width: 110px; }
+    .timing-estimate {
+      font-size: 22px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+    .timing-estimate[data-status="ok"] { color: var(--success); }
+    .timing-estimate[data-status="close"] { color: var(--warning); }
+    .timing-estimate[data-status="over"] { color: var(--accent); }
+    .timing-basis { font-size: 10px; color: var(--text-muted); }
+    .timing-bar {
+      height: 4px;
+      margin-top: 8px;
+      background: var(--border);
+      border-radius: 2px;
+      overflow: hidden;
+    }
+    .timing-bar.hidden { display: none; }
+    .timing-fill {
+      height: 100%; width: 0;
+      background: var(--success);
+      transition: width 0.2s;
+    }
+    .timing-fill[data-status="close"] { background: var(--warning); }
+    .timing-fill[data-status="over"] { background: var(--accent); }
+    .timing-hint {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 4px;
+      min-height: 14px;
+    }
+    .take-list { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+    .take-chip {
+      padding: 2px 6px;
+      background: var(--input-bg);
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      font-size: 10px;
+      color: var(--text-muted);
+      font-variant-numeric: tabular-nums;
+    }
+    .take-chip.ok { border-color: var(--success); color: var(--success); }
+    .take-chip.over { border-color: var(--accent); color: var(--accent); }
+    .pace-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-top: 6px;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
     /* Auto next page */
     .auto-next-row {
       display: flex; align-items: center; gap: 8px;
@@ -504,7 +563,7 @@
             <button class="mode-tab" data-mode="classic">Classic Scroll</button>
             <button class="mode-tab" data-mode="voice">Voice Scroll</button>
           </div>
-          <div style="margin-top:6px">
+          <div class="controls-grid" style="margin-top:6px">
             <div class="control-group">
               <span class="control-label">Speech Language</span>
               <select id="speechLang">
@@ -530,6 +589,59 @@
                 <option value="fi-FI">Suomi</option>
               </select>
             </div>
+            <div class="control-group">
+              <span class="control-label">Jump to other sentence after</span>
+              <select id="jumpMinMatches" title="Word Tracking: how many words in a row must match another part of the script before the prompter jumps there">
+                <option value="2">2 matching words</option>
+                <option value="3" selected>3 matching words</option>
+                <option value="4">4 matching words</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Reels & Timing -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Reels &amp; Timing</span>
+          <button class="section-toggle" id="toggleTiming">&#9660;</button>
+        </div>
+        <div class="section-body">
+          <div class="timing-row">
+            <div>
+              <div class="timing-estimate" id="timingEstimate">~0:00</div>
+              <div class="timing-basis" id="timingBasis"></div>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Target length</span>
+              <select id="reelTarget">
+                <option value="0">No target</option>
+                <option value="15">15 s</option>
+                <option value="30">30 s</option>
+                <option value="60">60 s</option>
+                <option value="90">90 s</option>
+                <option value="180">3 min</option>
+              </select>
+            </div>
+          </div>
+          <div class="timing-bar hidden" id="timingBar"><div class="timing-fill" id="timingFill"></div></div>
+          <div class="timing-hint" id="timingHint"></div>
+          <div class="auto-next-row">
+            <label class="check-label">
+              <input type="checkbox" id="takeLoop">
+              Take loop: restart after each take
+            </label>
+            <select id="loopDelay" style="width:auto" title="Break between takes">
+              <option value="3">3 sec</option>
+              <option value="5">5 sec</option>
+              <option value="10">10 sec</option>
+            </select>
+          </div>
+          <div class="take-list" id="takeList"></div>
+          <div class="pace-row">
+            <span>Your pace: <span id="paceValue">not learned yet</span></span>
+            <button class="file-btn" id="resetPaceBtn" title="Forget the learned speaking pace">Reset</button>
           </div>
         </div>
       </div>
@@ -710,11 +822,13 @@
         <button class="btn btn-primary" id="startBtn">&#9654; Start</button>
         <button class="btn btn-stop" id="stopBtn">&#9632; Stop</button>
         <button class="btn btn-secondary" id="pauseBtn" style="display:none">&#9208; Pause</button>
+        <button class="btn btn-secondary" id="restartBtn" style="display:none" title="Start the take again from the top (R in the overlay)">&#8634; Restart</button>
       </div>
 
       <div class="shortcuts">
         <kbd>Ctrl+Shift+Space</kbd> Pause &nbsp;
         <kbd>Esc</kbd> Close &nbsp;
+        <kbd>R</kbd> Restart take &nbsp;
         <kbd>Ctrl+O</kbd> Open &nbsp;
         <kbd>Ctrl+S</kbd> Save
       </div>
@@ -737,6 +851,7 @@
   <script>
     const { ipcRenderer } = require('electron');
     const path = require('path');
+    const timing = require('./timing');
 
     // ==========================================
     // STATE
@@ -750,6 +865,9 @@
     let highlightColor = '#e94560';
     let currentFilePath = null;
     let hasUnsavedChanges = false;
+    let learnedWpm = null;   // speaking pace learned from word-tracking takes
+    let learnedTakes = 0;
+    let takes = [];
 
     // Elements
     const scriptText = document.getElementById('scriptText');
@@ -762,6 +880,7 @@
     const unsavedDot = document.getElementById('unsavedDot');
     const pageSidebar = document.getElementById('pageSidebar');
     const pageLabel = document.getElementById('pageLabel');
+    const restartBtn = document.getElementById('restartBtn');
 
     // ==========================================
     // MULTI-PAGE SUPPORT
@@ -1073,6 +1192,7 @@
         };
         reader.readAsText(file);
       }
+      updateTimingUI();
       markUnsaved();
     });
 
@@ -1089,6 +1209,7 @@
         document.querySelectorAll('.mode-tab').forEach(t => t.classList.remove('active'));
         tab.classList.add('active');
         currentMode = tab.dataset.mode;
+        updateTimingUI();
         updateRunningSettings();
       });
     });
@@ -1129,16 +1250,22 @@
     bindSlider('overlayWidth', 'widthVal', v => v);
     bindSlider('overlayHeight', 'heightVal', v => v);
 
-    // Word count
+    // Word count and estimated length
     scriptText.addEventListener('input', () => {
       pages[currentPage] = scriptText.value;
-      const words = scriptText.value.trim().split(/\s+/).filter(w => w.length > 0);
-      wordCount.textContent = words.length + ' words';
+      updateTimingUI();
       markUnsaved();
     });
+    document.getElementById('speed').addEventListener('input', updateTimingUI);
 
     // Settings toggle
     document.getElementById('toggleSettings').addEventListener('click', function () {
+      const section = this.closest('.section');
+      section.classList.toggle('collapsed');
+      this.textContent = section.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+    });
+
+    document.getElementById('toggleTiming').addEventListener('click', function () {
       const section = this.closest('.section');
       section.classList.toggle('collapsed');
       this.textContent = section.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
@@ -1159,6 +1286,96 @@
     // Auto next page toggle
     document.getElementById('autoNextPage').addEventListener('change', function () {
       document.getElementById('autoNextOptions').style.display = this.checked ? 'flex' : 'none';
+    });
+
+    // ==========================================
+    // REELS & TIMING
+    // ==========================================
+
+    // Estimated speaking time of the current page, checked against the Reel target
+    function updateTimingUI() {
+      const settings = { mode: currentMode, speed: parseFloat(document.getElementById('speed').value), learnedWpm };
+      const text = scriptText.value;
+      const seconds = timing.estimateSeconds(text, settings);
+      const target = parseInt(document.getElementById('reelTarget').value) || 0;
+      const status = timing.targetStatus(seconds, target);
+      const wpm = timing.modeWpm(settings);
+
+      wordCount.textContent = `${timing.countWords(text).spoken} words \u00b7 ~${timing.formatDuration(seconds)}`;
+
+      const estimate = document.getElementById('timingEstimate');
+      estimate.textContent = '~' + timing.formatDuration(seconds);
+      estimate.dataset.status = status;
+
+      let basis = `at ${settings.speed.toFixed(1)} words/sec (Speed setting)`;
+      if (currentMode === 'word-tracking') {
+        basis = learnedWpm
+          ? `at your pace of ${Math.round(wpm)} words/min`
+          : `at ${timing.DEFAULT_WPM} words/min until a take teaches your pace`;
+      }
+      document.getElementById('timingBasis').textContent = basis;
+
+      document.getElementById('timingBar').classList.toggle('hidden', !target);
+      const fill = document.getElementById('timingFill');
+      fill.style.width = target ? Math.min(100, (seconds / target) * 100) + '%' : '0';
+      fill.dataset.status = status;
+
+      const hint = document.getElementById('timingHint');
+      if (!target || !seconds) {
+        hint.textContent = '';
+      } else if (status === 'over') {
+        hint.textContent = `~${Math.ceil(seconds - target)} s too long for ${target} s \u2013 cut about ${timing.wordsToCut(seconds, target, wpm)} words`;
+      } else {
+        hint.textContent = `Fits ${target} s with ~${Math.floor(target - seconds)} s to spare`;
+      }
+
+      document.getElementById('paceValue').textContent = learnedWpm
+        ? `${Math.round(learnedWpm)} words/min (${learnedTakes} take${learnedTakes === 1 ? '' : 's'})`
+        : 'not learned yet';
+    }
+
+    function renderTakes() {
+      const list = document.getElementById('takeList');
+      list.innerHTML = '';
+      takes.slice(-8).reverse().forEach(t => {
+        const status = timing.targetStatus(t.seconds, t.target);
+        const chip = document.createElement('span');
+        chip.className = 'take-chip' + (status === 'over' ? ' over' : status === 'none' ? '' : ' ok');
+        chip.textContent = `#${t.n} ${timing.formatDuration(t.seconds)}`
+          + (status === 'none' ? '' : status === 'over' ? ' \u2717' : ' \u2713');
+        chip.title = `${t.words} words` + (t.wpm ? ` \u00b7 ${Math.round(t.wpm)} words/min` : '');
+        list.appendChild(chip);
+      });
+    }
+
+    // Every finished take is listed; clean word-tracking takes teach the pace
+    ipcRenderer.on('take-finished', (event, result) => {
+      if (!result) return;
+      takes.push({ ...result, n: result.take || takes.length + 1 });
+      if (result.wpm) {
+        learnedWpm = timing.blendWpm(learnedWpm, result.wpm);
+        learnedTakes++;
+        persistSettings();
+        updateRunningSettings();
+      }
+      renderTakes();
+      updateTimingUI();
+    });
+
+    ['jumpMinMatches', 'reelTarget', 'takeLoop', 'loopDelay'].forEach(id => {
+      document.getElementById(id).addEventListener('change', () => {
+        updateTimingUI();
+        updateRunningSettings();
+        persistSettings();
+      });
+    });
+
+    document.getElementById('resetPaceBtn').addEventListener('click', () => {
+      learnedWpm = null;
+      learnedTakes = 0;
+      updateTimingUI();
+      updateRunningSettings();
+      persistSettings();
     });
 
     // ==========================================
@@ -1503,6 +1720,11 @@
         autoNextPage: document.getElementById('autoNextPage').checked,
         autoNextDelay: parseInt(document.getElementById('autoNextDelay').value),
         speechLang: document.getElementById('speechLang').value,
+        jumpMinMatches: parseInt(document.getElementById('jumpMinMatches').value),
+        reelTarget: parseInt(document.getElementById('reelTarget').value) || 0,
+        takeLoop: document.getElementById('takeLoop').checked,
+        loopDelay: parseInt(document.getElementById('loopDelay').value),
+        learnedWpm: learnedWpm,
         text: scriptText.value,
         pageIndex: currentPage,
         totalPages: pages.length,
@@ -1516,22 +1738,8 @@
     }
 
     function persistSettings() {
-      ipcRenderer.send('save-settings', {
-        mode: currentMode,
-        display: currentDisplay,
-        speed: parseFloat(document.getElementById('speed').value),
-        fontSize: parseInt(document.getElementById('fontSize').value),
-        opacity: parseFloat(document.getElementById('opacity').value),
-        width: parseInt(document.getElementById('overlayWidth').value),
-        height: parseInt(document.getElementById('overlayHeight').value),
-        fontFamily: document.getElementById('fontFamily').value,
-        highlightColor: highlightColor,
-        mirror: document.getElementById('mirrorFlip').checked,
-        showElapsed: document.getElementById('showElapsed').checked,
-        autoNextPage: document.getElementById('autoNextPage').checked,
-        autoNextDelay: parseInt(document.getElementById('autoNextDelay').value),
-        speechLang: document.getElementById('speechLang').value,
-      });
+      const { text, pageIndex, totalPages, ...persisted } = getSettingsObj();
+      ipcRenderer.send('save-settings', { ...persisted, learnedTakes });
     }
 
     // Load saved settings
@@ -1568,6 +1776,15 @@
       }
       if (s.autoNextDelay) document.getElementById('autoNextDelay').value = s.autoNextDelay;
       if (s.speechLang) document.getElementById('speechLang').value = s.speechLang;
+      if (s.jumpMinMatches) document.getElementById('jumpMinMatches').value = s.jumpMinMatches;
+      if (s.reelTarget !== undefined) document.getElementById('reelTarget').value = s.reelTarget;
+      if (s.takeLoop !== undefined) document.getElementById('takeLoop').checked = s.takeLoop;
+      if (s.loopDelay) document.getElementById('loopDelay').value = s.loopDelay;
+      if (s.learnedWpm) {
+        learnedWpm = s.learnedWpm;
+        learnedTakes = s.learnedTakes || 0;
+      }
+      updateTimingUI();
     });
 
     // Save settings on change
@@ -1591,6 +1808,7 @@
     startBtn.addEventListener('click', startPrompter);
     stopBtn.addEventListener('click', stopPrompter);
     pauseBtn.addEventListener('click', togglePause);
+    restartBtn.addEventListener('click', restartTake);
 
     function startPrompter() {
       pages[currentPage] = scriptText.value;
@@ -1619,6 +1837,7 @@
       startBtn.style.display = 'none';
       stopBtn.style.display = 'flex';
       pauseBtn.style.display = 'flex';
+      restartBtn.style.display = 'flex';
       statusDot.classList.add('active');
       statusText.textContent = 'Running - ' + currentMode.replace('-', ' ');
     }
@@ -1639,17 +1858,32 @@
       }
     }
 
+    // The prompter starts the script over and resumes if it was paused
+    function restartTake() {
+      ipcRenderer.send('scroll-command', 'restart-take');
+      pauseBtn.innerHTML = '&#9208; Pause';
+      statusText.textContent = 'Running - ' + currentMode.replace('-', ' ');
+    }
+
     function resetUI() {
       isRunning = false;
       startBtn.style.display = 'flex';
       stopBtn.style.display = 'none';
       pauseBtn.style.display = 'none';
+      restartBtn.style.display = 'none';
       pauseBtn.innerHTML = '&#9208; Pause';
       statusDot.classList.remove('active');
       statusText.textContent = 'Ready';
     }
 
     ipcRenderer.on('prompter-closed', resetUI);
+
+    // The overlay can pause, resume or restart by itself (Space, R, tray)
+    ipcRenderer.on('prompter-paused', (event, paused) => {
+      if (!isRunning) return;
+      pauseBtn.innerHTML = paused ? '&#9654; Resume' : '&#9208; Pause';
+      statusText.textContent = paused ? 'Paused' : 'Running - ' + currentMode.replace('-', ' ');
+    });
 
     // Tray commands
     ipcRenderer.on('tray-start', startPrompter);
@@ -1685,6 +1919,7 @@
 
     // Init
     renderPages();
+    updateTimingUI();
   </script>
 </body>
 </html>

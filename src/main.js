@@ -511,6 +511,38 @@ ipcMain.on('scroll-command', (event, cmd) => {
   }
 });
 
+ipcMain.on('take-started', () => {
+  if (externalWindow) {
+    externalWindow.webContents.send('scroll-command', 'restart-take');
+  }
+  // Remotes leave the "Done" screen of the previous take
+  remoteState.currentIndex = 0;
+  broadcastRemoteState();
+  // A restart from the completion screen runs again, unpaused
+  updateTrayMenu(true);
+  if (controlWindow) {
+    controlWindow.webContents.send('prompter-paused', false);
+  }
+});
+
+ipcMain.on('prompter-paused', (event, paused) => {
+  if (controlWindow) {
+    controlWindow.webContents.send('prompter-paused', paused);
+  }
+});
+
+// The prompter finished for good (e.g. take loop switched off during the break)
+ipcMain.on('prompter-run-ended', () => {
+  updateTrayMenu(false);
+});
+
+// The external display mirrors the primary's take time
+ipcMain.on('prompter-time', (event, data) => {
+  if (externalWindow) {
+    externalWindow.webContents.send('sync-time', data);
+  }
+});
+
 ipcMain.on('prompter-progress', (event, data) => {
   // Sync to external display
   if (externalWindow) {
@@ -521,10 +553,18 @@ ipcMain.on('prompter-progress', (event, data) => {
   broadcastRemoteState();
 });
 
-ipcMain.on('prompter-finished', () => {
+ipcMain.on('prompter-finished', (event, result = {}) => {
   remoteState.currentIndex = remoteState.words.length;
   broadcastRemoteState();
-  updateTrayMenu(false);
+  // Take duration and pace for the Reels & Timing panel
+  if (controlWindow) {
+    controlWindow.webContents.send('take-finished', result);
+  }
+  if (externalWindow) {
+    externalWindow.webContents.send('sync-finished', result);
+  }
+  // In take loop the prompter keeps running
+  if (!result.loop) updateTrayMenu(false);
 });
 
 ipcMain.on('save-settings', (event, settings) => {

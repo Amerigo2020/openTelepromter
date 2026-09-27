@@ -54,6 +54,8 @@
       min-width: 50px;
       text-align: right;
     }
+    #elapsedTime[data-status="close"] { color: #f39c12; }
+    #elapsedTime[data-status="over"] { color: #e74c3c; }
     #pageInfo {
       font-size: 10px;
       color: rgba(255, 255, 255, 0.3);
@@ -149,6 +151,10 @@
       text-overflow: ellipsis;
       direction: rtl;
     }
+    #lastSpoken.error {
+      color: #f39c12;
+      direction: ltr;
+    }
 
     /* Mic indicator */
     #micIndicator {
@@ -201,6 +207,12 @@
       font-size: 16px;
       color: rgba(255,255,255,0.6);
     }
+    .done-detail, .countdown-detail {
+      margin-top: 6px;
+      font-size: 12px;
+      color: rgba(255,255,255,0.45);
+      font-variant-numeric: tabular-nums;
+    }
     @keyframes checkPop {
       0% { transform: scale(0); opacity: 0; }
       60% { transform: scale(1.3); }
@@ -251,11 +263,13 @@
     <div id="completionScreen">
       <div class="check-icon">&#10003;</div>
       <div class="done-text">Done!</div>
+      <div class="done-detail" id="doneDetail"></div>
     </div>
 
     <div id="pageCountdown">
       <div class="countdown-num" id="countdownNum">3</div>
-      <div class="countdown-label">Next page...</div>
+      <div class="countdown-label" id="countdownLabel">Next page...</div>
+      <div class="countdown-detail" id="countdownDetail"></div>
     </div>
 
     <div id="bottomBar">
@@ -268,21 +282,41 @@
 
   <script>
     const { ipcRenderer } = require('electron');
+    const { SpeechTracker, tokenize, isAnnotation, isSpoken } = require('./speech-tracker');
+    const timing = require('./timing');
 
     // ==========================================
     // STATE
     // ==========================================
     let words = [];
     let wordElements = [];
+    let contentBefore = [];  // number of non-annotation words before each index
     let currentWordIndex = 0;
     let isPaused = false;
+    let isFinished = false;
     let scrollInterval = null;
     let settings = {};
     let recognition = null;
     let isListening = false;
+    let speechUnavailable = null;
+    let silenceTimer = null;
+    let tracker = null;
     let elapsedTimer = null;
-    let elapsedSeconds = 0;
+    let countdownInterval = null;
+    let closeTimer = null;
     let isExternal = false;
+
+    // Running time in ms, excluding pauses
+    let clockAccum = 0;
+    let clockStart = 0;
+    // A take starts with the first spoken (or scrolled) word
+    let take = { number: 0, startMs: null, startWords: 0, manualNav: false };
+
+    const SILENCE_MS = 1200;
+    // Failures that won't go away by trying again in the next take
+    const PERMANENT_SPEECH_ERRORS = new Set(['not supported', 'not-allowed', 'service-not-allowed']);
+    let speechStartMs = null;
+    const FATAL_SPEECH_ERRORS = new Set(['not-allowed', 'service-not-allowed', 'language-not-supported', 'audio-capture']);
 
     // Elements
     const textContainer = document.getElementById('textContainer');
@@ -294,8 +328,11 @@
     const micIndicator = document.getElementById('micIndicator');
     const pageInfoEl = document.getElementById('pageInfo');
     const completionScreen = document.getElementById('completionScreen');
+    const doneDetail = document.getElementById('doneDetail');
     const pageCountdown = document.getElementById('pageCountdown');
     const countdownNum = document.getElementById('countdownNum');
+    const countdownLabel = document.getElementById('countdownLabel');
+    const countdownDetail = document.getElementById('countdownDetail');
 
     // Create waveform bars
     for (let i = 0; i < 16; i++) {
@@ -306,29 +343,15 @@
     }
 
     // ==========================================
-    // ANNOTATION DETECTION
-    // ==========================================
-    function isAnnotation(word) {
-      // Bracketed text like [pause], [beat], [slide]
-      if (/^\[.*\]$/.test(word)) return true;
-      // Parenthesized stage directions
-      if (/^\(.*\)$/.test(word)) return true;
-      // Pure emoji (basic detection)
-      if (/^[\u{1F300}-\u{1F9FF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]+$/u.test(word)) return true;
-      return false;
-    }
-
-    // ==========================================
     // IPC HANDLERS
     // ==========================================
 
     ipcRenderer.on('update-content', (event, data) => {
       settings = data;
       isExternal = !!data.isExternal;
-      initializeText(data.text);
       applyVisualSettings(data);
-      startElapsedTimer();
-      startMode(data.mode);
+      take.number = 0;
+      startTake();
 
       // Page info
       if (data.totalPages > 1) {
@@ -339,14 +362,20 @@
     ipcRenderer.on('apply-settings', (event, data) => {
       const modeChanged = settings.mode !== data.mode;
       const speedChanged = settings.speed !== data.speed;
-      settings = data;
+      // The page being recorded stays fixed; the editor may show another one
+      settings = { ...data, text: settings.text, pageIndex: settings.pageIndex, totalPages: settings.totalPages };
       applyVisualSettings(data);
+      if (tracker) tracker.options.jumpMinMatches = data.jumpMinMatches || 3;
+      if (isFinished) return;
 
       if (modeChanged) {
+        // The pace measured so far belongs to the previous mode
+        if (take.startMs !== null) take.manualNav = true;
+        retrySpeech();
         startMode(data.mode);
-      } else if (speedChanged && settings.mode === 'classic') {
-        // Restart classic with new speed
-        if (scrollInterval) clearInterval(scrollInterval);
+      } else if (speedChanged && timingSettings().mode === 'classic' && scrollInterval) {
+        // Restart classic with new speed (also a fallback from a speech mode)
+        clearInterval(scrollInterval);
         startClassicMode();
       }
     });
@@ -354,6 +383,23 @@
     ipcRenderer.on('toggle-pause', () => togglePause());
     ipcRenderer.on('scroll-command', (event, cmd) => {
       if (cmd === 'toggle-pause') togglePause();
+      if (cmd === 'restart-take') startTake();
+
+    });
+
+    // External displays show the primary's completion screen until the next take
+    ipcRenderer.on('sync-finished', (event, data) => {
+      if (!isExternal) return;
+      progressFill.style.width = '100%';
+      doneDetail.textContent = data.summary || '';
+      completionScreen.classList.add('visible');
+    });
+
+    // External displays show the primary's take time as is
+    ipcRenderer.on('sync-time', (event, data) => {
+      if (!isExternal) return;
+      elapsedTimeEl.textContent = data.text;
+      elapsedTimeEl.dataset.status = data.status;
     });
 
     // Sync from primary (for external display)
@@ -369,28 +415,32 @@
 
     function initializeText(text) {
       textContainer.innerHTML = '';
-      words = text.split(/\s+/).filter(w => w.length > 0);
+      words = tokenize(text);
       wordElements = [];
+      contentBefore = [];
       currentWordIndex = 0;
       completionScreen.classList.remove('visible');
       pageCountdown.classList.remove('visible');
 
+      let contentWords = 0;
       words.forEach((word, i) => {
+        contentBefore.push(contentWords);
         const span = document.createElement('span');
         span.className = 'word';
-        if (isAnnotation(word)) {
-          span.classList.add('annotation');
-        }
+        if (isAnnotation(word)) span.classList.add('annotation');
+        if (isSpoken(word)) contentWords++;
         span.textContent = word + ' ';
         span.dataset.index = i;
 
-        span.addEventListener('click', () => jumpToWord(i));
+        span.addEventListener('click', () => navigateTo(i));
         textContainer.appendChild(span);
         wordElements.push(span);
       });
+      contentBefore.push(contentWords);
 
       // Reset scroll
       textContainer.style.transform = 'translateY(0)';
+      progressFill.style.width = '0%';
     }
 
     // ==========================================
@@ -421,20 +471,113 @@
     }
 
     // ==========================================
+    // TAKES
+    // ==========================================
+
+    // (Re)starts the script from the top as a new take
+    function startTake() {
+      clearInterval(countdownInterval);
+      clearTimeout(closeTimer);
+      isFinished = false;
+      take = { number: take.number + 1, startMs: null, startWords: 0, manualNav: false };
+      speechStartMs = null;
+      retrySpeech();
+      initializeText(settings.text || '');
+      startElapsedTimer();
+      // Restarts and loops happen here, so the external display (and the
+      // control window's pause state) restart along
+      if (!isExternal && take.number > 1) ipcRenderer.send('take-started');
+      startMode(settings.mode);
+    }
+
+    // Transient speech failures (network, start errors) get another chance
+    function retrySpeech() {
+      if (speechUnavailable && !PERMANENT_SPEECH_ERRORS.has(speechUnavailable)) {
+        speechUnavailable = null;
+        lastSpokenEl.classList.remove('error');
+        lastSpokenEl.textContent = '';
+      }
+    }
+
+    // atMs: when the take actually began (e.g. speech start before recognition)
+    function startTakeClock(wordsDone, atMs) {
+      if (take.startMs !== null) return;
+      take.startMs = atMs !== undefined ? atMs : clockMs();
+      take.startWords = wordsDone;
+    }
+
+    // Words before an index as timing counts them: Classic Scroll spends a
+    // tick on every token, the speech modes skip annotations
+    function progressCount(index) {
+      return timingSettings().mode === 'classic' ? index : (contentBefore[index] || 0);
+    }
+
+    // Skipped or navigated words were not spoken, so they tell nothing about the pace
+    function takeDisturbed() {
+      return take.manualNav || (!!tracker && tracker.jumps > 0);
+    }
+
+    // The take began when speaking started, not when it was recognized
+    function speechBegan() {
+      const now = clockMs();
+      return speechStartMs !== null && now - speechStartMs < 10000 ? speechStartMs : now;
+    }
+
+    // Timing follows the mode actually running (speech may have fallen back)
+    function timingSettings() {
+      return speechUnavailable ? { ...settings, mode: 'classic' } : settings;
+    }
+
+    function takeSeconds() {
+      return take.startMs === null ? 0 : (clockMs() - take.startMs) / 1000;
+    }
+
+    // ==========================================
     // ELAPSED TIMER
     // ==========================================
 
+    function clockMs() {
+      return clockAccum + (clockStart ? performance.now() - clockStart : 0);
+    }
+
+    function pauseClock() {
+      clockAccum = clockMs();
+      clockStart = 0;
+    }
+
+    function resumeClock() {
+      if (!clockStart) clockStart = performance.now();
+    }
+
     function startElapsedTimer() {
-      elapsedSeconds = 0;
+      clockAccum = 0;
+      clockStart = performance.now();
       if (elapsedTimer) clearInterval(elapsedTimer);
-      elapsedTimer = setInterval(() => {
-        if (!isPaused) {
-          elapsedSeconds++;
-          const min = Math.floor(elapsedSeconds / 60);
-          const sec = elapsedSeconds % 60;
-          elapsedTimeEl.textContent = `${min}:${sec.toString().padStart(2, '0')}`;
-        }
-      }, 1000);
+      // External displays get their time from the primary (sync-time)
+      if (isExternal) return;
+      elapsedTimer = setInterval(renderTime, 250);
+      renderTime();
+    }
+
+    // Take time and expected total length, colored against the Reel target
+    function renderTime() {
+      const elapsed = takeSeconds();
+      let total = elapsed;
+      if (!isFinished) {
+        const wordsDone = progressCount(Math.min(currentWordIndex, words.length));
+        const wordsLeft = progressCount(words.length) - wordsDone;
+        total = take.startMs === null
+          ? timing.estimateSeconds(words.join(' '), timingSettings())
+          : timing.projectSeconds(elapsed, takeDisturbed() ? 0 : wordsDone - take.startWords, wordsLeft, timing.modeWpm(timingSettings()));
+      }
+      const text = isFinished
+        ? timing.formatDuration(elapsed)
+        : `${timing.formatDuration(elapsed)} / ~${timing.formatDuration(total)}`;
+      const status = timing.targetStatus(total, settings.reelTarget);
+      if (text === elapsedTimeEl.textContent && status === elapsedTimeEl.dataset.status) return;
+      elapsedTimeEl.textContent = text;
+      elapsedTimeEl.dataset.status = status;
+      ipcRenderer.send('prompter-time', { text, status });
     }
 
     // ==========================================
@@ -458,9 +601,33 @@
       highlightWord(index);
     }
 
+    // Manual navigation (click, keys, wheel): tracking continues from here
+    function navigateTo(index) {
+      if (isFinished || index < 0 || index >= wordElements.length) return;
+      if (tracker) tracker.setCursor(index);
+      take.manualNav = true;
+      jumpToWord(index);
+    }
+
+    // Moves the tracking cursor, restyling only the words in between
+    function moveTo(index) {
+      const from = Math.min(currentWordIndex, wordElements.length);
+      const lo = Math.min(from, index);
+      const hi = Math.min(Math.max(from, index), wordElements.length - 1);
+      for (let i = lo; i <= hi; i++) {
+        const el = wordElements[i];
+        el.classList.remove('active');
+        el.classList.toggle('spoken', i < index);
+        el.style.textShadow = 'none';
+      }
+      highlightWord(index);
+    }
+
     function highlightWord(index) {
+      if (isFinished) return;
       // Skip annotations in word-tracking/voice modes (loop to avoid stack overflow)
-      while (index < wordElements.length && isAnnotation(words[index]) && (settings.mode === 'word-tracking' || settings.mode === 'voice')) {
+      const skipUnspoken = !isExternal && timingSettings().mode !== 'classic';
+      while (index < wordElements.length && skipUnspoken && !isSpoken(words[index])) {
         index++;
       }
       currentWordIndex = index;
@@ -486,8 +653,8 @@
       progressFill.style.width = ((index / wordElements.length) * 100) + '%';
       currentWordIndex = index;
 
-      // Report progress to main
-      ipcRenderer.send('prompter-progress', { currentIndex: index });
+      // Report progress to main (external displays only follow it)
+      if (!isExternal) ipcRenderer.send('prompter-progress', { currentIndex: index });
     }
 
     function scrollToWord(el) {
@@ -508,37 +675,88 @@
     // ==========================================
 
     function onScriptFinished() {
+      if (isFinished) return;
+      isFinished = true;
       stopAllModes();
-      if (elapsedTimer) clearInterval(elapsedTimer);
+      pauseClock();
+      if (elapsedTimer) { clearInterval(elapsedTimer); elapsedTimer = null; }
       progressFill.style.width = '100%';
+      renderTime();
 
-      // Show completion screen
-      completionScreen.classList.add('visible');
-      ipcRenderer.send('prompter-finished');
+      const result = reportTake();
+      const summary = takeSummary(result.seconds);
 
-      // If auto-next-page, show countdown
-      if (settings.autoNextPage && settings.pageIndex < settings.totalPages - 1) {
-        completionScreen.classList.remove('visible');
-        showPageCountdown(settings.autoNextDelay || 3);
+      if (settings.takeLoop) {
+        // Take loop: short break, then the next take starts from the top,
+        // unless the loop was switched off meanwhile
+        showCountdown(settings.loopDelay || 3, 'Next take...', summary, () => {
+          if (settings.takeLoop) startTake();
+          else showDone(summary);
+        });
+      } else if (settings.autoNextPage && settings.pageIndex < settings.totalPages - 1) {
+        showCountdown(settings.autoNextDelay || 3, 'Next page...', summary, () => {
+          // Signal control window to advance page
+          ipcRenderer.send('scroll-command', 'page-finished');
+        });
       } else {
-        // Auto-close after 3 seconds
-        setTimeout(() => {
-          window.close();
-        }, 3000);
+        showDone(summary);
       }
     }
 
-    function showPageCountdown(seconds) {
-      pageCountdown.classList.add('visible');
-      countdownNum.textContent = seconds;
+    function showDone(summary) {
+      if (!isExternal) ipcRenderer.send('prompter-run-ended');
+      doneDetail.textContent = summary;
+      completionScreen.classList.add('visible');
+      // Auto-close after 3 seconds
+      closeTimer = setTimeout(() => {
+        window.close();
+      }, 3000);
+    }
 
-      const interval = setInterval(() => {
+    function reportTake() {
+      const seconds = takeSeconds();
+      const wordsSpoken = Math.max(0, progressCount(words.length) - take.startWords);
+      // Only undisturbed word-tracking takes show the natural speaking pace
+      const clean = settings.mode === 'word-tracking' && tracker && !takeDisturbed();
+      const result = {
+        take: take.number,
+        seconds,
+        words: wordsSpoken,
+        wpm: clean ? timing.measureWpm(wordsSpoken, seconds) : null,
+        mode: settings.mode,
+        target: settings.reelTarget || 0,
+        loop: !!settings.takeLoop,
+        summary: takeSummary(seconds),
+      };
+      ipcRenderer.send('prompter-finished', result);
+      return result;
+    }
+
+    function takeSummary(seconds) {
+      let text = `Take ${take.number} · ${timing.formatDuration(seconds)}`;
+      const target = settings.reelTarget;
+      if (target) {
+        text += seconds <= target
+          ? ` · fits ${target}s ✓`
+          : ` · ${Math.ceil(seconds - target)}s over ${target}s`;
+      }
+      return text;
+    }
+
+    function showCountdown(seconds, label, detail, onDone) {
+      countdownLabel.textContent = label;
+      countdownDetail.textContent = detail;
+      countdownNum.textContent = seconds;
+      pageCountdown.classList.add('visible');
+
+      clearInterval(countdownInterval);
+      countdownInterval = setInterval(() => {
+        if (isPaused) return;
         seconds--;
         if (seconds <= 0) {
-          clearInterval(interval);
+          clearInterval(countdownInterval);
           pageCountdown.classList.remove('visible');
-          // Signal control window to advance page
-          ipcRenderer.send('scroll-command', 'page-finished');
+          onDone();
         } else {
           countdownNum.textContent = seconds;
         }
@@ -551,17 +769,16 @@
 
     function startClassicMode() {
       const wps = settings.speed || 3;
-      const intervalMs = 1000 / wps;
+      scrollInterval = setInterval(scrollTick, 1000 / wps);
+    }
 
-      scrollInterval = setInterval(() => {
-        if (!isPaused) {
-          highlightWord(currentWordIndex);
-          currentWordIndex++;
-          if (currentWordIndex >= wordElements.length) {
-            clearInterval(scrollInterval);
-          }
-        }
-      }, intervalMs);
+    // Advances one word; the tick after the last word finishes the script
+    function scrollTick() {
+      if (isPaused || isFinished) return;
+      // Voice Scroll starts on speech: count from when speaking began
+      startTakeClock(progressCount(currentWordIndex), recognition ? speechBegan() : undefined);
+      highlightWord(currentWordIndex);
+      if (!isFinished) currentWordIndex++;
     }
 
     // ==========================================
@@ -569,83 +786,45 @@
     // ==========================================
 
     function startWordTracking() {
-      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        startClassicMode();
-        return;
-      }
+      tracker = new SpeechTracker(words, { jumpMinMatches: settings.jumpMinMatches || 3 });
+      // Continue from the current word when switching modes mid-take
+      tracker.setCursor(currentWordIndex);
+      if (currentWordIndex > 0) take.manualNav = true;
+      // Show where to (continue) reading
+      highlightWord(currentWordIndex);
+      // A page of only annotations finishes right away: no microphone needed
+      if (isFinished) return;
 
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = settings.speechLang || navigator.language || 'en-US';
-      recognition.maxAlternatives = 3;
-
-      let lastMatchedIndex = -1;
-      let retryCount = 0;
-      const MAX_RETRIES = 10;
-
-      recognition.onresult = (event) => {
-        if (isPaused) return;
-        setWaveformActive(true);
-        micIndicator.classList.add('listening');
-
-        for (let i = event.resultIndex; i < event.results.length; i++) {
-          const transcript = event.results[i][0].transcript.toLowerCase().trim();
-          const spokenWords = transcript.split(/\s+/);
-
-          // Update last spoken display
-          const lastThree = spokenWords.slice(-3).join(' ');
-          lastSpokenEl.textContent = lastThree;
-
-          for (const spoken of spokenWords) {
-            const cleanSpoken = normalizeWord(spoken);
-            if (cleanSpoken.length < 2) continue;
-
-            // Search forward with wider window
-            const searchEnd = Math.min(lastMatchedIndex + 20, words.length);
-            for (let j = Math.max(0, lastMatchedIndex + 1); j < searchEnd; j++) {
-              if (isAnnotation(words[j])) continue;
-
-              const cleanWord = normalizeWord(words[j]);
-              if (fuzzyMatch(cleanSpoken, cleanWord)) {
-                // Highlight all words up to match
-                for (let k = currentWordIndex; k <= j; k++) {
-                  highlightWord(k);
-                }
-                currentWordIndex = j + 1;
-                lastMatchedIndex = j;
-                retryCount = 0;
-                break;
-              }
-            }
+      const started = startRecognition({
+        onSession: () => { if (tracker) tracker.newSession(); },
+        onResult: (event) => {
+          const finals = [];
+          const interim = [];
+          for (let i = 0; i < event.results.length; i++) {
+            const result = event.results[i];
+            (result.isFinal ? finals : interim).push(...tokenize(result[0].transcript));
           }
-        }
-      };
+          const heard = finals.concat(interim);
+          if (heard.length) lastSpokenEl.textContent = heard.slice(-3).join(' ');
 
-      recognition.onspeechend = () => {
-        setWaveformActive(false);
-        micIndicator.classList.remove('listening');
-      };
+          const expected = tracker.cursor;
+          let next = tracker.update(finals, interim);
+          // Only finalized speech may finish the take; interim results can be revised
+          const total = tracker.totalWords;
+          if (total && tracker.wordsBefore(next) >= total && tracker.wordsBefore(tracker.committed.cursor) < total) {
+            next = tracker.contentIndex[total - 1];
+          }
+          while (next < words.length && !isSpoken(words[next])) next++;
+          if (next === currentWordIndex) return;
+          if (next > currentWordIndex) {
+            startTakeClock(tracker.wordsBefore(expected), speechBegan());
+          }
+          moveTo(next);
+        },
+      });
 
-      recognition.onend = () => {
-        if (isListening && !isPaused && retryCount < MAX_RETRIES) {
-          retryCount++;
-          try { recognition.start(); } catch (e) {}
-        }
-      };
-
-      recognition.onerror = (event) => {
-        if (event.error === 'not-allowed') {
-          startClassicMode();
-        }
-      };
-
-      try {
-        recognition.start();
-        isListening = true;
-        micIndicator.classList.add('listening');
-      } catch (e) {
+      if (!started) {
+        tracker = null;
         startClassicMode();
       }
     }
@@ -655,120 +834,118 @@
     // ==========================================
 
     function startVoiceScroll() {
-      if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) {
-        startClassicMode();
-        return;
+      const intervalMs = 1000 / (settings.speed || 3);
+
+      const started = startRecognition({
+        onResult: (event) => {
+          // Show last spoken
+          const result = event.results[event.results.length - 1];
+          if (result) {
+            lastSpokenEl.textContent = tokenize(result[0].transcript).slice(-3).join(' ');
+          }
+          if (!scrollInterval) {
+            scrollTick();
+            scrollInterval = setInterval(scrollTick, intervalMs);
+          }
+        },
+        // Stop scrolling while the speaker is silent
+        onSilence: () => {
+          clearInterval(scrollInterval);
+          scrollInterval = null;
+          // The last word was reached: finish instead of waiting for more speech
+          if (currentWordIndex >= words.length) scrollTick();
+        },
+      });
+
+      if (!started) startClassicMode();
+    }
+
+    // ==========================================
+    // SPEECH RECOGNITION
+    // ==========================================
+
+    function startRecognition({ onResult, onSession, onSilence }) {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognition || speechUnavailable) {
+        // Callers fall back to Classic Scroll; timing follows that fallback
+        speechUnavailable = speechUnavailable || 'not supported';
+        showSpeechError(speechUnavailable);
+        return false;
       }
 
-      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
-      recognition = new SpeechRecognition();
-      recognition.continuous = true;
-      recognition.interimResults = true;
-      recognition.lang = settings.speechLang || navigator.language || 'en-US';
+      const rec = new SpeechRecognition();
+      rec.continuous = true;
+      rec.interimResults = true;
+      rec.lang = settings.speechLang || navigator.language || 'en-US';
+      let failures = 0;
 
-      let scrolling = false;
-      let voiceScrollInterval = null;
-      const wps = settings.speed || 3;
-      const intervalMs = 1000 / wps;
-      let retryCount = 0;
+      // Every (re)start begins a fresh result list
+      rec.onspeechstart = () => {
+        if (!isPaused) speechStartMs = clockMs();
+      };
 
-      recognition.onresult = (event) => {
-        if (isPaused) return;
+      rec.onstart = () => {
+        if (onSession) onSession();
+      };
+
+      rec.onresult = (event) => {
+        if (isPaused || recognition !== rec) return;
+        failures = 0;
         setWaveformActive(true);
-        micIndicator.classList.add('listening');
+        clearTimeout(silenceTimer);
+        silenceTimer = setTimeout(() => {
+          setWaveformActive(false);
+          if (onSilence) onSilence();
+        }, SILENCE_MS);
+        onResult(event);
+      };
 
-        // Show last spoken
-        const result = event.results[event.results.length - 1];
-        if (result) {
-          const spokenWords = result[0].transcript.trim().split(/\s+/).slice(-3);
-          lastSpokenEl.textContent = spokenWords.join(' ');
-        }
-
-        if (!scrolling) {
-          scrolling = true;
-          voiceScrollInterval = setInterval(() => {
-            if (!isPaused && scrolling) {
-              highlightWord(currentWordIndex);
-              currentWordIndex++;
-              if (currentWordIndex >= wordElements.length) {
-                clearInterval(voiceScrollInterval);
-              }
-            }
-          }, intervalMs);
+      rec.onerror = (event) => {
+        if (recognition !== rec || event.error === 'no-speech' || event.error === 'aborted') return;
+        failures++;
+        if (FATAL_SPEECH_ERRORS.has(event.error) || failures >= 3) {
+          speechFailed(event.error);
         }
       };
 
-      recognition.onspeechend = () => {
-        scrolling = false;
-        if (voiceScrollInterval) {
-          clearInterval(voiceScrollInterval);
-          voiceScrollInterval = null;
-        }
-        setWaveformActive(false);
-        micIndicator.classList.remove('listening');
+      // Chromium ends continuous sessions after silence or a time limit
+      rec.onend = () => {
+        if (recognition !== rec || !isListening || isPaused) return;
+        setTimeout(() => {
+          if (recognition !== rec || !isListening || isPaused) return;
+          try { rec.start(); } catch (e) {}
+        }, failures ? 1000 : 0);
       };
 
-      recognition.onend = () => {
-        if (isListening && !isPaused && retryCount < 10) {
-          retryCount++;
-          try { recognition.start(); } catch (e) {}
-        }
-      };
-
-      recognition.onerror = (event) => {
-        if (event.error === 'not-allowed') {
-          startClassicMode();
-        }
-      };
-
+      recognition = rec;
       try {
-        recognition.start();
+        rec.start();
         isListening = true;
         micIndicator.classList.add('listening');
+        return true;
       } catch (e) {
-        startClassicMode();
+        recognition = null;
+        speechUnavailable = 'start failed';
+        showSpeechError(speechUnavailable);
+        return false;
       }
     }
 
-    // ==========================================
-    // FUZZY MATCHING
-    // ==========================================
-
-    function normalizeWord(word) {
-      return word.toLowerCase().replace(/[^a-zA-Z\u00C0-\u024F\u0400-\u04FF\u4E00-\u9FFF\u3040-\u30FF\uAC00-\uD7AF0-9]/g, '');
+    // No microphone access or no connection to the speech service:
+    // fall back to classic scrolling and say so in the overlay
+    function speechFailed(error) {
+      speechUnavailable = error;
+      stopAllModes();
+      tracker = null;
+      // The rest of the take scrolls at a fixed speed: the measured speech pace no longer applies
+      take.manualNav = true;
+      showSpeechError(error);
+      if (!isFinished) startClassicMode();
     }
 
-    function fuzzyMatch(spoken, target) {
-      if (!spoken || !target) return false;
-      if (spoken === target) return true;
-      if (target.startsWith(spoken) || spoken.startsWith(target)) return true;
-
-      // Edit distance for short words
-      if (spoken.length >= 3 && target.length >= 3) {
-        const dist = editDistance(spoken, target);
-        const maxLen = Math.max(spoken.length, target.length);
-        if (dist / maxLen <= 0.3) return true; // 30% tolerance
-      }
-      return false;
-    }
-
-    function editDistance(a, b) {
-      if (a.length === 0) return b.length;
-      if (b.length === 0) return a.length;
-      const matrix = [];
-      for (let i = 0; i <= b.length; i++) matrix[i] = [i];
-      for (let j = 0; j <= a.length; j++) matrix[0][j] = j;
-      for (let i = 1; i <= b.length; i++) {
-        for (let j = 1; j <= a.length; j++) {
-          const cost = a[j - 1] === b[i - 1] ? 0 : 1;
-          matrix[i][j] = Math.min(
-            matrix[i - 1][j] + 1,
-            matrix[i][j - 1] + 1,
-            matrix[i - 1][j - 1] + cost
-          );
-        }
-      }
-      return matrix[b.length][a.length];
+    function showSpeechError(error) {
+      lastSpokenEl.textContent = `Speech recognition unavailable (${error}) – using Classic Scroll`;
+      lastSpokenEl.classList.add('error');
     }
 
     // ==========================================
@@ -777,7 +954,9 @@
 
     function startMode(mode) {
       stopAllModes();
+      tracker = null;
       isPaused = false;
+      resumeClock();
 
       // Don't start speech recognition on external display
       if (isExternal) {
@@ -794,18 +973,36 @@
 
     function stopAllModes() {
       if (scrollInterval) { clearInterval(scrollInterval); scrollInterval = null; }
+      clearTimeout(silenceTimer);
       if (recognition) {
         isListening = false;
-        try { recognition.stop(); } catch (e) {}
+        const rec = recognition;
         recognition = null;
+        try { rec.stop(); } catch (e) {}
       }
       setWaveformActive(false);
       micIndicator.classList.remove('listening');
     }
 
     function togglePause() {
+      // Between takes, pausing holds the countdown
+      if (isFinished) {
+        if (pageCountdown.classList.contains('visible')) {
+          isPaused = !isPaused;
+          if (!isExternal) ipcRenderer.send('prompter-paused', isPaused);
+        }
+        return;
+      }
       isPaused = !isPaused;
+      // The external display's take clock pauses along
+      if (!isExternal) ipcRenderer.send('prompter-paused', isPaused);
       if (isPaused) {
+        pauseClock();
+        // Voice Scroll restarts only on new speech after resuming
+        if (recognition && scrollInterval) {
+          clearInterval(scrollInterval);
+          scrollInterval = null;
+        }
         if (recognition) {
           isListening = false;
           try { recognition.stop(); } catch (e) {}
@@ -813,8 +1010,10 @@
         setWaveformActive(false);
         micIndicator.classList.remove('listening');
       } else {
-        if ((settings.mode === 'word-tracking' || settings.mode === 'voice') && recognition) {
+        resumeClock();
+        if (recognition) {
           isListening = true;
+          micIndicator.classList.add('listening');
           try { recognition.start(); } catch (e) {}
         }
       }
@@ -833,16 +1032,17 @@
     document.addEventListener('keydown', (e) => {
       if (e.code === 'Space') { e.preventDefault(); togglePause(); }
       if (e.code === 'Escape') { window.close(); }
-      if (e.code === 'ArrowUp') { jumpToWord(Math.max(0, currentWordIndex - 5)); }
-      if (e.code === 'ArrowDown') { jumpToWord(Math.min(wordElements.length - 1, currentWordIndex + 5)); }
-      if (e.code === 'ArrowLeft') { jumpToWord(Math.max(0, currentWordIndex - 1)); }
-      if (e.code === 'ArrowRight') { jumpToWord(Math.min(wordElements.length - 1, currentWordIndex + 1)); }
+      if (e.code === 'KeyR' && !isExternal) { startTake(); }
+      if (e.code === 'ArrowUp') { navigateTo(Math.max(0, currentWordIndex - 5)); }
+      if (e.code === 'ArrowDown') { navigateTo(Math.min(wordElements.length - 1, currentWordIndex + 5)); }
+      if (e.code === 'ArrowLeft') { navigateTo(Math.max(0, currentWordIndex - 1)); }
+      if (e.code === 'ArrowRight') { navigateTo(Math.min(wordElements.length - 1, currentWordIndex + 1)); }
     });
 
     // Mouse scroll to jump
     document.addEventListener('wheel', (e) => {
       const delta = e.deltaY > 0 ? 3 : -3;
-      jumpToWord(Math.max(0, Math.min(wordElements.length - 1, currentWordIndex + delta)));
+      navigateTo(Math.max(0, Math.min(wordElements.length - 1, currentWordIndex + delta)));
     });
   </script>
 </body>
