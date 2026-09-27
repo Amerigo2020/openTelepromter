@@ -6,6 +6,8 @@
   "scripts": {
     "start": "electron .",
     "test": "node --test",
+    "build:web": "node scripts/build-web.js",
+    "serve:web": "npm run build:web && npx --yes http-server dist-web -p 8080 -c-1",
     "build": "electron-builder",
     "build:win": "electron-builder --win",
     "build:linux": "electron-builder --linux"

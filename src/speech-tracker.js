@@ -279,6 +279,30 @@ class SpeechTracker {
   }
 }
 
+// Splits recognizer results into finalized and interim words.
+// results: [{ words, isFinal }] in recognizer order.
+// cumulative: the recognizer repeats earlier results at the start of later
+// ones (Chrome on Android); only the new part of such a result is kept.
+function mergeResults(results, cumulative = false) {
+  const finals = [];
+  const interim = [];
+  let chain = [];
+  for (const { words, isFinal } of results) {
+    let fresh = words;
+    if (cumulative && chain.length && startsWithWords(words, chain)) {
+      fresh = words.slice(chain.length);
+    }
+    chain = words;
+    (isFinal ? finals : interim).push(...fresh);
+  }
+  return { finals, interim };
+}
+
+function startsWithWords(words, prefix) {
+  if (prefix.length > words.length) return false;
+  return prefix.every((w, i) => normalizeWord(w) === normalizeWord(words[i]));
+}
+
 // Next word first, then repeated words, then small skips ahead
 function nearPriority(d) {
   return d === 0 ? 0 : d < 0 ? -d : d + 2;
@@ -290,6 +314,7 @@ function isCloser(d, other) {
 
 module.exports = {
   SpeechTracker,
+  mergeResults,
   tokenize,
   isAnnotation,
   isSpoken,

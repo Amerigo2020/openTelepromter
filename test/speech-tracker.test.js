@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { SpeechTracker, tokenize, normalizeWord, wordsMatch } = require('../src/speech-tracker');
+const { SpeechTracker, mergeResults, tokenize, normalizeWord, wordsMatch } = require('../src/speech-tracker');
 
 // Simulates one recognition session: final results accumulate,
 // the interim hypothesis is replaced on every event
@@ -163,4 +163,36 @@ test('jumps on interim results count even before they are final', () => {
   sayWords(s, 'Heute geht es um Reels');
   assert.equal(s.interim('Zweitens solltet ihr'), 16);
   assert.equal(t.jumps, 1);
+});
+
+test('merges recognizer results into final and interim words', () => {
+  const r = (text, isFinal) => ({ words: tokenize(text), isFinal });
+  assert.deepEqual(
+    mergeResults([r('Heute geht', true), r('es um', true), r('Reels', false)]),
+    { finals: ['Heute', 'geht', 'es', 'um'], interim: ['Reels'] },
+  );
+  // Android repeats earlier results inside later ones
+  assert.deepEqual(
+    mergeResults([r('Heute geht', true), r('heute geht es um', true), r('Heute geht es um Reels', false)], true),
+    { finals: ['Heute', 'geht', 'es', 'um'], interim: ['Reels'] },
+  );
+  // A new utterance that does not repeat the previous one is kept whole
+  assert.deepEqual(
+    mergeResults([r('Heute geht', true), r('es um Reels', true)], true),
+    { finals: ['Heute', 'geht', 'es', 'um', 'Reels'], interim: [] },
+  );
+});
+
+test('cumulative Android results do not jump back', () => {
+  const words = tokenize('Heute geht es um Reels und wie ihr sie schneller aufnehmt');
+  const tracker = new SpeechTracker(words);
+  const r = (text, isFinal) => ({ words: tokenize(text), isFinal });
+  const feed = list => {
+    const { finals, interim } = mergeResults(list, true);
+    return tracker.update(finals, interim);
+  };
+  feed([r('Heute geht es um Reels', true)]);
+  const cursor = feed([r('Heute geht es um Reels', true), r('Heute geht es um Reels und wie', true)]);
+  assert.equal(cursor, 7);
+  assert.equal(tracker.jumps, 0);
 });

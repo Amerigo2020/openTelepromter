@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>Prompter Overlay</title>
+  <!-- web:head -->
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body {
@@ -242,6 +244,91 @@
       margin-top: 4px;
     }
 
+    /* ===== Devices ===== */
+    /* Web app: the prompter fills the screen, around notches */
+    body.web #overlay { border-radius: 0; }
+    body.web #dragHandle { -webkit-app-region: no-drag; cursor: default; }
+    body.web #dragHandle .grip { display: none; }
+    body.web #topBar {
+      padding-top: env(safe-area-inset-top);
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+    }
+    body.web #bottomBar {
+      padding-left: max(12px, env(safe-area-inset-left));
+      padding-right: max(12px, env(safe-area-inset-right));
+    }
+    body.web #progressBar { margin-bottom: env(safe-area-inset-bottom); }
+    body.touch #elapsedTime, body.touch #pageInfo { font-size: 14px; }
+    body.touch #lastSpoken { font-size: 13px; }
+    body.touch .word:hover { color: inherit; }
+
+    /* Slow devices and reduced motion: no animations */
+    body.fx-static #textContainer,
+    body.fx-static .word,
+    body.fx-static #progressFill { transition: none; }
+    body.fx-static .wave-bar.active { animation: none; height: 10px; }
+    body.fx-static #micIndicator.listening,
+    body.fx-static #completionScreen .check-icon { animation: none; }
+
+    /* Touch controls (no keyboard on phones and tablets) */
+    #touchBar {
+      display: none;
+      position: absolute;
+      left: 50%;
+      bottom: calc(34px + env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      z-index: 60;
+      gap: 8px;
+      padding: 8px;
+      background: rgba(20, 20, 40, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 16px;
+      transition: opacity 0.2s;
+    }
+    body.has-touch-bar #touchBar { display: flex; }
+    #touchBar.hidden { opacity: 0; pointer-events: none; }
+    #touchBar button {
+      min-width: 52px;
+      height: 52px;
+      padding: 0 12px;
+      border: none;
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff;
+      font-size: 20px;
+      font-family: inherit;
+      cursor: pointer;
+    }
+    #touchBar button:active { background: rgba(255, 255, 255, 0.2); }
+    #touchBar .close { background: rgba(231, 76, 60, 0.35); }
+
+    /* Web: tap to start, so the browser allows the microphone */
+    #startGate {
+      display: none;
+      position: absolute;
+      inset: 0;
+      z-index: 70;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: rgba(10, 10, 30, 0.9);
+      color: #fff;
+      cursor: pointer;
+      text-align: center;
+      padding: 24px;
+    }
+    #startGate.visible { display: flex; }
+    #startGate .gate-button {
+      padding: 18px 36px;
+      border-radius: 40px;
+      background: #e94560;
+      font-size: 22px;
+      font-weight: 600;
+    }
+    #startGate .gate-hint { font-size: 14px; color: rgba(255, 255, 255, 0.55); max-width: 420px; }
+
     /* Mirror mode */
     body.mirror #content { transform: scaleX(-1); }
     body.mirror-v #content { transform: scaleY(-1); }
@@ -272,6 +359,19 @@
       <div class="countdown-detail" id="countdownDetail"></div>
     </div>
 
+    <div id="startGate">
+      <div class="gate-button">&#9654; Tap to start</div>
+      <div class="gate-hint" id="gateHint">Allow the microphone when asked. Swipe to move through the text, tap the screen for controls.</div>
+    </div>
+
+    <div id="touchBar" class="hidden">
+      <button id="tbPause" title="Pause">&#9208;</button>
+      <button id="tbRestart" title="Restart take">&#8634;</button>
+      <button id="tbSmaller" title="Smaller text">A&#8722;</button>
+      <button id="tbBigger" title="Bigger text">A+</button>
+      <button id="tbClose" class="close" title="Close">&#10005;</button>
+    </div>
+
     <div id="bottomBar">
       <div id="micIndicator"></div>
       <div id="waveform"></div>
@@ -282,8 +382,26 @@
 
   <script>
     const { ipcRenderer } = require('electron');
-    const { SpeechTracker, tokenize, isAnnotation, isSpoken } = require('./speech-tracker');
+    const { SpeechTracker, mergeResults, tokenize, isAnnotation, isSpoken } = require('./speech-tracker');
     const timing = require('./timing');
+    const device = require('./device');
+
+    // ==========================================
+    // DEVICE
+    // ==========================================
+    const isWeb = !!(window.otPlatform && window.otPlatform.isWeb);
+    const detected = device.detectDevice(device.browserEnv());
+    // Detected profile with the user's overrides (effects, jump threshold)
+    let profile = detected;
+    // On-screen controls: the web app has no keyboard shortcuts on phones
+    // and tablets, and no window to close
+    const hasTouchBar = isWeb;
+    // Browsers only start the microphone reliably after a tap on touch devices
+    let gatePassed = !(isWeb && detected.touch);
+
+    document.body.classList.toggle('web', isWeb);
+    document.body.classList.toggle('touch', detected.touch);
+    document.body.classList.toggle('has-touch-bar', hasTouchBar);
 
     // ==========================================
     // STATE
@@ -351,7 +469,16 @@
       isExternal = !!data.isExternal;
       applyVisualSettings(data);
       take.number = 0;
-      startTake();
+      if (gatePassed || isExternal) {
+        startTake();
+      } else {
+        // Show the text behind the gate; the first tap starts the take
+        stopAllModes();
+        clearInterval(countdownInterval);
+        clearTimeout(closeTimer);
+        initializeText(settings.text || '');
+        document.getElementById('startGate').classList.add('visible');
+      }
 
       // Page info
       if (data.totalPages > 1) {
@@ -365,8 +492,9 @@
       // The page being recorded stays fixed; the editor may show another one
       settings = { ...data, text: settings.text, pageIndex: settings.pageIndex, totalPages: settings.totalPages };
       applyVisualSettings(data);
-      if (tracker) tracker.options.jumpMinMatches = data.jumpMinMatches || 3;
-      if (isFinished) return;
+      if (tracker) tracker.options.jumpMinMatches = profile.tracking.jumpMinMatches;
+      // Nothing runs yet behind the start gate
+      if (isFinished || !gatePassed) return;
 
       if (modeChanged) {
         // The pace measured so far belongs to the previous mode
@@ -448,26 +576,31 @@
     // ==========================================
 
     function applyVisualSettings(s) {
+      profile = device.applyOverrides(detected, { effects: s.effects, jumpMinMatches: s.jumpMinMatches });
       textContainer.style.fontFamily = s.fontFamily;
-      textContainer.style.fontSize = s.fontSize + 'px';
+      textContainer.style.fontSize = (s.fontSize || profile.layout.fontSize) + 'px';
+      document.getElementById('content').style.padding = profile.layout.padding;
       progressFill.style.background = s.highlightColor;
       overlay.style.background = `rgba(10, 10, 30, ${s.opacity})`;
 
       // Elapsed time visibility
       elapsedTimeEl.style.display = s.showElapsed ? 'block' : 'none';
 
-      // Mirror modes
-      document.body.className = '';
+      // Mirror modes and effects
+      document.body.classList.remove('mirror', 'mirror-v', 'mirror-both');
       if (s.mirror) {
         document.body.classList.add('mirror');
       }
+      document.body.classList.toggle('fx-static', !profile.effects.animations);
 
       // Update active word glow
       wordElements.forEach(el => {
-        if (el.classList.contains('active')) {
-          el.style.textShadow = `0 0 8px ${s.highlightColor}`;
-        }
+        if (el.classList.contains('active')) el.style.textShadow = glowFor(s.highlightColor);
       });
+    }
+
+    function glowFor(color) {
+      return profile.effects.glow ? `0 0 8px ${color || '#e94560'}` : 'none';
     }
 
     // ==========================================
@@ -647,7 +780,7 @@
       const el = wordElements[index];
       el.classList.add('active');
       el.classList.remove('spoken');
-      el.style.textShadow = `0 0 8px ${settings.highlightColor || '#e94560'}`;
+      el.style.textShadow = glowFor(settings.highlightColor);
 
       scrollToWord(el);
       progressFill.style.width = ((index / wordElements.length) * 100) + '%';
@@ -657,16 +790,14 @@
       if (!isExternal) ipcRenderer.send('prompter-progress', { currentIndex: index });
     }
 
+    // Puts the word on the reading line. Uses the layout position, which the
+    // running scroll animation does not affect, so fast updates don't drift.
     function scrollToWord(el) {
       const container = document.getElementById('content');
-      const containerRect = container.getBoundingClientRect();
-      const elRect = el.getBoundingClientRect();
-      const targetY = containerRect.top + containerRect.height * 0.3;
-      const diff = elRect.top - targetY;
-
-      if (Math.abs(diff) > 5) {
-        const current = parseFloat(textContainer.style.transform?.replace('translateY(', '') || '0');
-        textContainer.style.transform = `translateY(${current - diff}px)`;
+      const offset = container.clientHeight * profile.layout.focusLine - el.offsetTop;
+      const current = parseFloat(textContainer.style.transform?.replace('translateY(', '') || '0');
+      if (Math.abs(offset - current) > 5) {
+        textContainer.style.transform = `translateY(${offset}px)`;
       }
     }
 
@@ -786,7 +917,10 @@
     // ==========================================
 
     function startWordTracking() {
-      tracker = new SpeechTracker(words, { jumpMinMatches: settings.jumpMinMatches || 3 });
+      tracker = new SpeechTracker(words, {
+        lookahead: profile.tracking.lookahead,
+        jumpMinMatches: profile.tracking.jumpMinMatches,
+      });
       // Continue from the current word when switching modes mid-take
       tracker.setCursor(currentWordIndex);
       if (currentWordIndex > 0) take.manualNav = true;
@@ -798,12 +932,12 @@
       const started = startRecognition({
         onSession: () => { if (tracker) tracker.newSession(); },
         onResult: (event) => {
-          const finals = [];
-          const interim = [];
+          const results = [];
           for (let i = 0; i < event.results.length; i++) {
             const result = event.results[i];
-            (result.isFinal ? finals : interim).push(...tokenize(result[0].transcript));
+            results.push({ words: tokenize(result[0].transcript), isFinal: result.isFinal });
           }
+          const { finals, interim } = mergeResults(results, profile.tracking.cumulativeResults);
           const heard = finals.concat(interim);
           if (heard.length) lastSpokenEl.textContent = heard.slice(-3).join(' ');
 
@@ -944,7 +1078,13 @@
     }
 
     function showSpeechError(error) {
-      lastSpokenEl.textContent = `Speech recognition unavailable (${error}) – using Classic Scroll`;
+      let reason = `Speech recognition unavailable (${error})`;
+      if (error === 'not-allowed' || error === 'service-not-allowed') {
+        reason = 'Microphone blocked: allow it in the browser settings';
+      } else if (error === 'not supported') {
+        reason = 'This browser has no speech recognition (use Chrome or Safari)';
+      }
+      lastSpokenEl.textContent = `${reason} – using Classic Scroll`;
       lastSpokenEl.classList.add('error');
     }
 
@@ -956,6 +1096,7 @@
       stopAllModes();
       tracker = null;
       isPaused = false;
+      updateTouchBar();
       resumeClock();
 
       // Don't start speech recognition on external display
@@ -989,11 +1130,13 @@
       if (isFinished) {
         if (pageCountdown.classList.contains('visible')) {
           isPaused = !isPaused;
+          updateTouchBar();
           if (!isExternal) ipcRenderer.send('prompter-paused', isPaused);
         }
         return;
       }
       isPaused = !isPaused;
+      updateTouchBar();
       // The external display's take clock pauses along
       if (!isExternal) ipcRenderer.send('prompter-paused', isPaused);
       if (isPaused) {
@@ -1017,6 +1160,10 @@
           try { recognition.start(); } catch (e) {}
         }
       }
+    }
+
+    function updateTouchBar() {
+      document.getElementById('tbPause').innerHTML = isPaused ? '&#9654;' : '&#9208;';
     }
 
     function setWaveformActive(active) {
@@ -1043,6 +1190,71 @@
     document.addEventListener('wheel', (e) => {
       const delta = e.deltaY > 0 ? 3 : -3;
       navigateTo(Math.max(0, Math.min(wordElements.length - 1, currentWordIndex + delta)));
+    });
+
+    // ==========================================
+    // TOUCH
+    // ==========================================
+
+    // Swiping moves through the text like the mouse wheel
+    const SWIPE_STEP_PX = 40;
+    let swipeY = null;
+    const contentEl = document.getElementById('content');
+    contentEl.addEventListener('touchstart', (e) => {
+      swipeY = e.touches[0].clientY;
+    }, { passive: true });
+    contentEl.addEventListener('touchmove', (e) => {
+      if (swipeY === null) return;
+      e.preventDefault();
+      const dy = swipeY - e.touches[0].clientY;
+      if (Math.abs(dy) < SWIPE_STEP_PX) return;
+      const steps = Math.trunc(dy / SWIPE_STEP_PX);
+      swipeY -= steps * SWIPE_STEP_PX;
+      navigateTo(Math.max(0, Math.min(wordElements.length - 1, currentWordIndex + steps * 3)));
+    }, { passive: false });
+    contentEl.addEventListener('touchend', () => { swipeY = null; }, { passive: true });
+
+    // Tapping next to the words shows the controls for a few seconds
+    const touchBar = document.getElementById('touchBar');
+    let touchBarTimer = null;
+    function showTouchBar() {
+      if (!hasTouchBar) return;
+      touchBar.classList.remove('hidden');
+      clearTimeout(touchBarTimer);
+      touchBarTimer = setTimeout(() => touchBar.classList.add('hidden'), 4000);
+    }
+    contentEl.addEventListener('click', (e) => {
+      if (!e.target.classList.contains('word')) showTouchBar();
+    });
+    touchBar.addEventListener('click', showTouchBar);
+
+    document.getElementById('tbPause').addEventListener('click', () => togglePause());
+    document.getElementById('tbRestart').addEventListener('click', () => { if (!isExternal) startTake(); });
+    document.getElementById('tbClose').addEventListener('click', () => window.close());
+    document.getElementById('tbSmaller').addEventListener('click', () => changeFontSize(-2));
+    document.getElementById('tbBigger').addEventListener('click', () => changeFontSize(2));
+
+    function changeFontSize(delta) {
+      const size = Math.max(14, Math.min(96, (settings.fontSize || profile.layout.fontSize) + delta));
+      settings.fontSize = size;
+      textContainer.style.fontSize = size + 'px';
+      const el = wordElements[currentWordIndex];
+      if (el) scrollToWord(el);
+      // Remembered for this device
+      ipcRenderer.send('prompter-font-size', size);
+    }
+
+    document.getElementById('startGate').addEventListener('click', () => {
+      gatePassed = true;
+      document.getElementById('startGate').classList.remove('visible');
+      startTake();
+      showTouchBar();
+    });
+
+    // Rotating the device or resizing the window keeps the current word in view
+    window.addEventListener('resize', () => {
+      const el = wordElements[Math.min(currentWordIndex, wordElements.length - 1)];
+      if (el) scrollToWord(el);
     });
   </script>
 </body>

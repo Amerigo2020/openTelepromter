@@ -1,6 +1,6 @@
 # openTeleprompter
 
-A free, open-source teleprompter for **Windows** and **Linux** with real-time word tracking, classic auto-scroll, and voice-activated scrolling.
+A free, open-source teleprompter for **Windows** and **Linux**, and as a web app for **Android phones, iPhones, iPads** and any browser, with real-time word tracking, classic auto-scroll, and voice-activated scrolling.
 
 Inspired by [Textream](https://github.com/f/textream) (macOS only), openTeleprompter brings the same full feature set to Windows and Linux as a lightweight Electron app.
 
@@ -18,6 +18,19 @@ Inspired by [Textream](https://github.com/f/textream) (macOS only), openTeleprom
 - Overlay shows the take time and the projected total length, turning orange/red when the take is about to exceed the target
 - Take loop: after the last word, a short break (3/5/10 s), then the next take starts from the top
 - Every take's length is listed in the control window; restart a take anytime with `R` or the Restart button
+
+### Phones, Tablets and Browsers (Web App)
+The same app runs in the browser and can be added to the home screen (PWA, works offline once loaded).
+- **Responsive layout** — phones stack everything with the Start button always in reach; tablets and wide windows show the script next to the settings. Touch-sized controls, safe areas around notches.
+- **Adapts to the device** — shown under Settings → *This device*:
+  - *Text:* default font size per device (phone 28 px, tablet 40 px, desktop 22 px), margins and reading line. A−/A+ in the prompter changes and remembers it.
+  - *Performance:* glow and animations are turned off on slow devices (≤ 2 CPU cores or ≤ 2 GB RAM) and for "reduce motion". Override with *Effects: Full / Reduced*.
+  - *Word Tracking:* Safari (iPhone, iPad) revises more words, so it tolerates more gaps and needs 4 matching words for a jump; Android's recognizer repeats earlier text in later results, which is filtered out. *Jump to other sentence after: Auto* uses these defaults.
+- **Touch controls** — tap next to the text for Pause, Restart, A−/A+ and Close; swipe to move through the text. On phones and tablets a "Tap to start" screen comes first so the browser allows the microphone.
+- Fullscreen, keeps the screen on while reading (where the browser supports it), Android's Back button closes the prompter.
+- The script is kept on the device between visits; *Save* downloads a project file.
+- Speech recognition needs Chrome (Android, desktop) or Safari (iPhone, iPad, macOS) and an HTTPS address. Firefox falls back to Classic Scroll.
+- Desktop-only: Floating/Pinned overlay windows, External Display, Remote Connection, tray.
 
 ### 3 Display Modes
 - **Floating** — Draggable, transparent overlay with adjustable opacity. Always on top.
@@ -112,6 +125,15 @@ npm start
 npm test
 ```
 
+### Web App
+
+```bash
+npm run build:web   # builds dist-web/
+npm run serve:web   # builds and serves it on http://localhost:8080
+```
+
+Microphones only work on `https://` or `localhost`, so test phones against the deployed version. The GitHub Actions workflow `.github/workflows/web.yml` runs the tests and builds the web app for every pull request, and deploys it to GitHub Pages on every push to `main` (Settings → Pages → Source: *GitHub Actions* must be enabled once).
+
 ### Build
 
 ```bash
@@ -131,6 +153,9 @@ src/
   prompter.html    — Teleprompter overlay (display, modes, tracking)
   speech-tracker.js — Aligns recognized speech with the script (Word Tracking)
   timing.js        — Speaking-time estimates, learned pace, Reel targets
+  device.js        — Device profile: form factor, performance, speech engine
+  web/             — Web app: platform layer (replaces Electron's main process), PWA manifest, service worker, icons
+scripts/build-web.js — Builds the web app into dist-web/
 test/              — Unit tests (node --test)
 ```
 
