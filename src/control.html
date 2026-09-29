@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <title>openTeleprompter</title>
+  <!-- web:head -->
   <style>
     :root {
       --bg: #1a1a2e;
@@ -23,9 +25,14 @@
       font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       background: var(--bg);
       color: var(--text);
-      overflow-y: auto;
       user-select: none;
       font-size: 13px;
+      display: flex;
+      flex-direction: column;
+      height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
+      -webkit-text-size-adjust: 100%;
     }
     /* Titlebar */
     .titlebar {
@@ -73,7 +80,7 @@
     .unsaved-dot.visible { display: inline-block; }
 
     /* Main layout */
-    .main-layout { display: flex; height: calc(100vh - 37px); }
+    .main-layout { display: flex; flex: 1; min-height: 0; }
 
     /* Page sidebar */
     .page-sidebar {
@@ -510,6 +517,89 @@
     }
     .ctx-item:hover { background: var(--accent); color: white; }
     .ctx-item.disabled { color: var(--text-muted); pointer-events: none; }
+
+    .side-column { display: flex; flex-direction: column; gap: 8px; }
+    .device-info { font-size: 10px; color: var(--text-muted); margin-top: 2px; }
+
+    /* ===== Devices ===== */
+    /* Notches and home indicators */
+    .titlebar {
+      padding-top: max(8px, env(safe-area-inset-top));
+      padding-left: max(16px, env(safe-area-inset-left));
+      padding-right: max(16px, env(safe-area-inset-right));
+    }
+    .status-bar {
+      padding-bottom: max(5px, env(safe-area-inset-bottom));
+      padding-left: max(10px, env(safe-area-inset-left));
+      padding-right: max(10px, env(safe-area-inset-right));
+    }
+
+    /* Features that need the desktop app (windows, tray, network server) */
+    body.web .desktop-only { display: none !important; }
+    body.touch .keyboard-only { display: none !important; }
+
+    /* Touch screens: finger-sized targets; 16px inputs keep iOS from zooming */
+    body.touch { font-size: 15px; }
+    body.touch .titlebar h1 { font-size: 16px; }
+    body.touch .titlebar-btn { padding: 8px 14px; font-size: 14px; }
+    body.touch .section { padding: 12px; }
+    body.touch .section-title,
+    body.touch .control-label,
+    body.touch .timing-basis,
+    body.touch .device-info { font-size: 12px; }
+    body.touch .section-toggle { font-size: 14px; padding: 6px 10px; }
+    body.touch .file-btn { padding: 10px 14px; font-size: 14px; }
+    body.touch .mode-tab { padding: 12px 6px; font-size: 14px; }
+    body.touch .display-mode-btn { padding: 10px; font-size: 13px; }
+    body.touch select,
+    body.touch input[type="number"],
+    body.touch .script-area { font-size: 16px; }
+    body.touch select { padding: 10px 8px; }
+    body.touch .check-label { font-size: 15px; min-height: 40px; }
+    body.touch .check-label input { width: 22px; height: 22px; }
+    body.touch input[type="range"] { height: 6px; }
+    body.touch input[type="range"]::-webkit-slider-thumb { width: 26px; height: 26px; }
+    body.touch .range-value { font-size: 13px; min-width: 36px; }
+    body.touch .btn { padding: 14px; font-size: 16px; }
+    body.touch .page-btn,
+    body.touch .page-add-btn { width: 44px; height: 44px; min-width: 44px; font-size: 15px; }
+    body.touch .color-swatch { width: 34px; height: 34px; }
+    body.touch .color-options { gap: 10px; flex-wrap: wrap; }
+    body.touch .take-chip { font-size: 13px; padding: 4px 8px; }
+    body.touch .pace-row, body.touch .timing-hint { font-size: 13px; }
+    body.touch .status-bar { font-size: 12px; }
+    body.touch .ctx-item { padding: 12px 18px; font-size: 15px; }
+
+    /* Narrow screens (phones): pages in a row on top, Start always in reach */
+    body.narrow .main-layout { flex-direction: column; }
+    body.narrow .page-sidebar {
+      flex-direction: row;
+      width: auto;
+      min-width: 0;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      padding: 6px max(8px, env(safe-area-inset-left));
+      overflow-x: auto;
+      overflow-y: hidden;
+      flex-shrink: 0;
+    }
+    body.narrow .controls-grid { grid-template-columns: 1fr; }
+    body.narrow .timing-row { flex-wrap: wrap; }
+    body.narrow .script-area { max-height: 40vh; }
+    body.narrow .container { padding-bottom: 0; }
+    body.narrow .actions {
+      position: sticky;
+      bottom: 0;
+      z-index: 5;
+      padding: 8px 0 10px;
+      background: var(--bg);
+    }
+
+    /* Wide screens (tablets, big windows): script next to the settings */
+    body.wide .container { flex-direction: row; align-items: flex-start; gap: 12px; }
+    body.wide .script-section { flex: 3; min-width: 0; position: sticky; top: 0; }
+    body.wide .script-section .script-area { min-height: 55vh; max-height: none; }
+    body.wide .side-column { flex: 2; min-width: 0; }
   </style>
 </head>
 <body>
@@ -535,7 +625,7 @@
 
     <div class="container">
       <!-- Script Input -->
-      <div class="section">
+      <div class="section script-section">
         <div class="section-header">
           <span class="section-title">Script</span>
           <span id="pageLabel" style="font-size:10px;color:var(--text-muted)">Page 1/1</span>
@@ -554,6 +644,7 @@
         </div>
       </div>
 
+      <div class="side-column">
       <!-- Guidance Mode -->
       <div class="section">
         <div class="section-title" style="margin-bottom:6px">Guidance Mode</div>
@@ -592,8 +683,9 @@
             <div class="control-group">
               <span class="control-label">Jump to other sentence after</span>
               <select id="jumpMinMatches" title="Word Tracking: how many words in a row must match another part of the script before the prompter jumps there">
+                <option value="auto" id="jumpAutoOption" selected>Auto</option>
                 <option value="2">2 matching words</option>
-                <option value="3" selected>3 matching words</option>
+                <option value="3">3 matching words</option>
                 <option value="4">4 matching words</option>
               </select>
             </div>
@@ -647,7 +739,7 @@
       </div>
 
       <!-- Display Mode -->
-      <div class="section">
+      <div class="section desktop-only">
         <div class="section-title" style="margin-bottom:6px">Display Mode</div>
         <div class="section-body">
           <div class="display-modes">
@@ -682,7 +774,7 @@
             <div class="control-group">
               <span class="control-label">Font Size</span>
               <div class="control-row">
-                <input type="range" id="fontSize" min="14" max="48" step="1" value="22">
+                <input type="range" id="fontSize" min="14" max="72" step="1" value="22">
                 <span class="range-value" id="fontSizeVal">22</span>
               </div>
             </div>
@@ -693,14 +785,14 @@
                 <span class="range-value" id="opacityVal">85%</span>
               </div>
             </div>
-            <div class="control-group">
+            <div class="control-group desktop-only">
               <span class="control-label">Width</span>
               <div class="control-row">
                 <input type="range" id="overlayWidth" min="280" max="800" step="10" value="480">
                 <span class="range-value" id="widthVal">480</span>
               </div>
             </div>
-            <div class="control-group">
+            <div class="control-group desktop-only">
               <span class="control-label">Height</span>
               <div class="control-row">
                 <input type="range" id="overlayHeight" min="80" max="500" step="10" value="200">
@@ -715,6 +807,14 @@
                 <option value="'Courier New', monospace">Courier</option>
                 <option value="'Arial', sans-serif">Arial</option>
                 <option value="'OpenDyslexic', sans-serif">OpenDyslexic</option>
+              </select>
+            </div>
+            <div class="control-group">
+              <span class="control-label">Effects</span>
+              <select id="effects" title="Glow and animations in the prompter. Auto reduces them on slow devices.">
+                <option value="auto" id="effectsAutoOption">Auto</option>
+                <option value="full">Full</option>
+                <option value="reduced">Reduced</option>
               </select>
             </div>
             <div class="control-group full-width">
@@ -741,6 +841,10 @@
               </label>
             </div>
             <div class="control-group full-width">
+              <span class="control-label">This device</span>
+              <div class="device-info" id="deviceInfo"></div>
+            </div>
+            <div class="control-group full-width">
               <label class="check-label">
                 <input type="checkbox" id="autoNextPage">
                 Auto next page
@@ -758,7 +862,7 @@
       </div>
 
       <!-- External Display -->
-      <div class="section">
+      <div class="section desktop-only">
         <div class="section-header">
           <span class="section-title">External Display</span>
           <button class="section-toggle" id="toggleExternal">&#9660;</button>
@@ -790,7 +894,7 @@
       </div>
 
       <!-- Remote Connection -->
-      <div class="section">
+      <div class="section desktop-only">
         <div class="section-header">
           <span class="section-title">Remote Connection</span>
           <button class="section-toggle" id="toggleRemote">&#9660;</button>
@@ -825,12 +929,13 @@
         <button class="btn btn-secondary" id="restartBtn" style="display:none" title="Start the take again from the top (R in the overlay)">&#8634; Restart</button>
       </div>
 
-      <div class="shortcuts">
+      <div class="shortcuts keyboard-only">
         <kbd>Ctrl+Shift+Space</kbd> Pause &nbsp;
         <kbd>Esc</kbd> Close &nbsp;
         <kbd>R</kbd> Restart take &nbsp;
         <kbd>Ctrl+O</kbd> Open &nbsp;
         <kbd>Ctrl+S</kbd> Save
+      </div>
       </div>
     </div>
   </div>
@@ -852,6 +957,28 @@
     const { ipcRenderer } = require('electron');
     const path = require('path');
     const timing = require('./timing');
+    const device = require('./device');
+
+    // ==========================================
+    // DEVICE
+    // ==========================================
+
+    // Web app (phones, tablets, browsers) or the Electron desktop app
+    const isWeb = !!(window.otPlatform && window.otPlatform.isWeb);
+    const profile = device.detectDevice(device.browserEnv());
+
+    document.body.classList.toggle('web', isWeb);
+    document.body.classList.toggle('touch', profile.touch);
+    document.body.classList.add('ff-' + profile.formFactor);
+
+    // Layout by available width: phones stack everything, wide screens use two columns
+    function updateLayout() {
+      const width = window.innerWidth;
+      document.body.classList.toggle('narrow', profile.formFactor === 'phone' || width < 480);
+      document.body.classList.toggle('wide', profile.formFactor !== 'phone' && width >= 900);
+    }
+    updateLayout();
+    window.addEventListener('resize', updateLayout);
 
     // ==========================================
     // STATE
@@ -901,6 +1028,7 @@
           e.preventDefault();
           showPageContextMenu(e, i);
         });
+        addLongPress(btn, (point) => showPageContextMenu(point, i));
         pageSidebar.insertBefore(btn, addBtn);
       });
 
@@ -939,13 +1067,28 @@
 
     document.getElementById('addPageBtn').addEventListener('click', addPage);
 
+    // Touch screens: holding a finger on an element
+    function addLongPress(el, onLongPress) {
+      let timer = null;
+      el.addEventListener('touchstart', (e) => {
+        const touch = e.touches[0];
+        timer = setTimeout(() => {
+          timer = null;
+          onLongPress({ clientX: touch.clientX, clientY: touch.clientY });
+        }, 550);
+      }, { passive: true });
+      ['touchend', 'touchmove', 'touchcancel'].forEach(type => {
+        el.addEventListener(type, () => { clearTimeout(timer); timer = null; }, { passive: true });
+      });
+    }
+
     // Page context menu
     let ctxTargetPage = 0;
     function showPageContextMenu(e, pageIndex) {
       ctxTargetPage = pageIndex;
       const menu = document.getElementById('pageCtxMenu');
-      menu.style.left = e.clientX + 'px';
-      menu.style.top = e.clientY + 'px';
+      menu.style.left = Math.min(e.clientX, window.innerWidth - 160) + 'px';
+      menu.style.top = Math.min(e.clientY, window.innerHeight - 60) + 'px';
       menu.classList.add('visible');
       const delItem = document.getElementById('ctxDeletePage');
       delItem.className = pages.length <= 1 ? 'ctx-item disabled' : 'ctx-item';
@@ -966,8 +1109,33 @@
 
     function markUnsaved() {
       hasUnsavedChanges = true;
-      window.hasUnsavedChanges = true;
+      window.hasUnsavedChanges = !isWeb;
       unsavedDot.classList.add('visible');
+      saveDraft();
+    }
+
+    // Web: the script is kept on the device, so closing the tab loses nothing
+    const DRAFT_KEY = 'openTeleprompter.draft';
+    let draftTimer = null;
+    function saveDraft() {
+      if (!isWeb) return;
+      clearTimeout(draftTimer);
+      draftTimer = setTimeout(() => {
+        pages[currentPage] = scriptText.value;
+        try { localStorage.setItem(DRAFT_KEY, JSON.stringify({ pages, currentPage })); } catch (e) {}
+      }, 400);
+    }
+
+    function restoreDraft() {
+      if (!isWeb) return;
+      try {
+        const draft = JSON.parse(localStorage.getItem(DRAFT_KEY));
+        if (draft && Array.isArray(draft.pages) && draft.pages.length) {
+          pages = draft.pages;
+          currentPage = Math.min(draft.currentPage || 0, pages.length - 1);
+          scriptText.value = pages[currentPage] || '';
+        }
+      } catch (e) {}
     }
 
     function markSaved() {
@@ -976,7 +1144,64 @@
       unsavedDot.classList.remove('visible');
     }
 
+    // Web: the browser's file picker (resolves only when a file was chosen)
+    function pickFile(accept) {
+      return new Promise(resolve => {
+        const input = document.createElement('input');
+        input.type = 'file';
+        input.accept = accept;
+        input.addEventListener('change', () => { if (input.files[0]) resolve(input.files[0]); });
+        input.click();
+      });
+    }
+
+    // Web: saving hands the file to the browser as a download
+    function downloadFile(name, content) {
+      const url = URL.createObjectURL(new Blob([content], { type: 'application/json' }));
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = name;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+
+    function setPages(newPages) {
+      pages = newPages.length ? newPages : [''];
+      currentPage = 0;
+      scriptText.value = pages[0] || '';
+      scriptText.dispatchEvent(new Event('input'));
+      renderPages();
+    }
+
+    // Loads a project (.json), PowerPoint notes (.pptx) or plain text
+    // filePath: where Save writes to later (desktop only)
+    async function loadScriptFile(name, readText, readBuffer, filePath = null) {
+      const ext = path.extname(name).toLowerCase();
+      if (ext === '.pptx') {
+        await importPptx(readBuffer);
+        return;
+      }
+      const content = await readText();
+      let loaded = [content];
+      if (ext === '.json') {
+        try {
+          const data = JSON.parse(content);
+          if (Array.isArray(data.pages)) loaded = data.pages;
+        } catch (e) {}
+      }
+      setPages(loaded);
+      currentFilePath = filePath;
+      markSaved();
+    }
+
     async function openFile() {
+      if (isWeb) {
+        const file = await pickFile('.txt,.md,.text,.json,.pptx');
+        await loadScriptFile(file.name, () => file.text(), () => file.arrayBuffer());
+        return;
+      }
       const result = await ipcRenderer.invoke('show-open-dialog', {
         filters: [
           { name: 'All Supported', extensions: ['txt', 'md', 'json', 'pptx'] },
@@ -988,44 +1213,22 @@
 
       if (result.canceled || !result.filePaths.length) return;
       const filePath = result.filePaths[0];
-      const ext = path.extname(filePath).toLowerCase();
-
-      if (ext === '.pptx') {
-        await importPptx(filePath);
-      } else if (ext === '.json') {
-        const content = await ipcRenderer.invoke('read-file', filePath);
-        try {
-          const data = JSON.parse(content);
-          if (Array.isArray(data.pages)) {
-            pages = data.pages;
-            currentPage = 0;
-            scriptText.value = pages[0] || '';
-            scriptText.dispatchEvent(new Event('input'));
-            renderPages();
-            currentFilePath = filePath;
-            markSaved();
-          }
-        } catch (e) {
-          scriptText.value = content;
-          pages = [content];
-          currentPage = 0;
-          renderPages();
-        }
-      } else {
-        const content = await ipcRenderer.invoke('read-file', filePath);
-        scriptText.value = content;
-        pages = [content];
-        currentPage = 0;
-        renderPages();
-        currentFilePath = filePath;
-        markSaved();
-      }
-
-      scriptText.dispatchEvent(new Event('input'));
+      await loadScriptFile(
+        filePath,
+        () => ipcRenderer.invoke('read-file', filePath),
+        () => ipcRenderer.invoke('read-file-buffer', filePath),
+        path.extname(filePath).toLowerCase() === '.pptx' ? null : filePath,
+      );
     }
 
     async function saveFile() {
       pages[currentPage] = scriptText.value;
+
+      if (isWeb) {
+        downloadFile('script.json', JSON.stringify({ pages, settings: getSettingsObj() }, null, 2));
+        markSaved();
+        return;
+      }
 
       if (!currentFilePath || !currentFilePath.endsWith('.json')) {
         const result = await ipcRenderer.invoke('show-save-dialog', {
@@ -1049,17 +1252,11 @@
       markSaved();
     }
 
-    async function importPptx(filePath) {
+    // readBuffer: returns the file's bytes (Buffer or ArrayBuffer)
+    async function importPptx(readBuffer) {
       try {
-        const JSZip = require('jszip') || null;
-        if (!JSZip) {
-          // jszip not available, read as text fallback
-          const content = await ipcRenderer.invoke('read-file', filePath);
-          scriptText.value = '(PowerPoint import requires jszip dependency)\n\n' + content;
-          return;
-        }
-        const buffer = await ipcRenderer.invoke('read-file-buffer', filePath);
-        const zip = await JSZip.loadAsync(buffer);
+        const JSZip = require('jszip');
+        const zip = await JSZip.loadAsync(await readBuffer());
         const slideNotes = [];
 
         // Find slide note files
@@ -1090,11 +1287,8 @@
         }
 
         if (slideNotes.length > 0) {
-          pages = slideNotes;
-          currentPage = 0;
-          scriptText.value = pages[0];
-          scriptText.dispatchEvent(new Event('input'));
-          renderPages();
+          setPages(slideNotes);
+          currentFilePath = null;
           markUnsaved();
         }
       } catch (e) {
@@ -1125,11 +1319,17 @@
     });
 
     document.getElementById('importPptxBtn').addEventListener('click', async () => {
+      if (isWeb) {
+        const file = await pickFile('.pptx');
+        await importPptx(() => file.arrayBuffer());
+        return;
+      }
       const result = await ipcRenderer.invoke('show-open-dialog', {
         filters: [{ name: 'PowerPoint', extensions: ['pptx'] }]
       });
       if (!result.canceled && result.filePaths.length) {
-        await importPptx(result.filePaths[0]);
+        const filePath = result.filePaths[0];
+        await importPptx(() => ipcRenderer.invoke('read-file-buffer', filePath));
       }
     });
 
@@ -1167,30 +1367,12 @@
       const file = files[0];
       const ext = path.extname(file.name).toLowerCase();
 
-      if (ext === '.pptx') {
-        await importPptx(file.path);
-      } else if (ext === '.json') {
-        const content = await ipcRenderer.invoke('read-file', file.path);
-        try {
-          const data = JSON.parse(content);
-          if (Array.isArray(data.pages)) {
-            pages = data.pages;
-            currentPage = 0;
-            scriptText.value = pages[0] || '';
-            renderPages();
-          }
-        } catch (ex) {
-          scriptText.value = content;
-          pages[currentPage] = content;
-        }
+      if (ext === '.pptx' || ext === '.json') {
+        await loadScriptFile(file.name, () => file.text(), () => file.arrayBuffer());
       } else {
-        const reader = new FileReader();
-        reader.onload = (ev) => {
-          scriptText.value = ev.target.result;
-          pages[currentPage] = ev.target.result;
-          scriptText.dispatchEvent(new Event('input'));
-        };
-        reader.readAsText(file);
+        // Text replaces the current page only
+        scriptText.value = await file.text();
+        scriptText.dispatchEvent(new Event('input'));
       }
       updateTimingUI();
       markUnsaved();
@@ -1362,7 +1544,7 @@
       updateTimingUI();
     });
 
-    ['jumpMinMatches', 'reelTarget', 'takeLoop', 'loopDelay'].forEach(id => {
+    ['jumpMinMatches', 'effects', 'reelTarget', 'takeLoop', 'loopDelay'].forEach(id => {
       document.getElementById(id).addEventListener('change', () => {
         updateTimingUI();
         updateRunningSettings();
@@ -1720,7 +1902,9 @@
         autoNextPage: document.getElementById('autoNextPage').checked,
         autoNextDelay: parseInt(document.getElementById('autoNextDelay').value),
         speechLang: document.getElementById('speechLang').value,
-        jumpMinMatches: parseInt(document.getElementById('jumpMinMatches').value),
+        // 0: the device default (Auto)
+        jumpMinMatches: parseInt(document.getElementById('jumpMinMatches').value) || 0,
+        effects: document.getElementById('effects').value,
         reelTarget: parseInt(document.getElementById('reelTarget').value) || 0,
         takeLoop: document.getElementById('takeLoop').checked,
         loopDelay: parseInt(document.getElementById('loopDelay').value),
@@ -1776,7 +1960,8 @@
       }
       if (s.autoNextDelay) document.getElementById('autoNextDelay').value = s.autoNextDelay;
       if (s.speechLang) document.getElementById('speechLang').value = s.speechLang;
-      if (s.jumpMinMatches) document.getElementById('jumpMinMatches').value = s.jumpMinMatches;
+      if (s.jumpMinMatches !== undefined) document.getElementById('jumpMinMatches').value = s.jumpMinMatches || 'auto';
+      if (s.effects) document.getElementById('effects').value = s.effects;
       if (s.reelTarget !== undefined) document.getElementById('reelTarget').value = s.reelTarget;
       if (s.takeLoop !== undefined) document.getElementById('takeLoop').checked = s.takeLoop;
       if (s.loopDelay) document.getElementById('loopDelay').value = s.loopDelay;
@@ -1917,7 +2102,23 @@
     document.getElementById('showElapsed').addEventListener('change', updateRunningSettings);
     document.getElementById('speechLang').addEventListener('change', updateRunningSettings);
 
+    // The prompter's A-/A+ buttons change the font size for this device
+    ipcRenderer.on('prompter-font-size', (event, size) => {
+      document.getElementById('fontSize').value = size;
+      document.getElementById('fontSizeVal').textContent = size;
+      persistSettings();
+    });
+
+    // Defaults for this device; saved settings override them
+    document.getElementById('fontSize').value = profile.layout.fontSize;
+    document.getElementById('fontSizeVal').textContent = profile.layout.fontSize;
+    document.getElementById('jumpAutoOption').textContent = `Auto (${profile.tracking.jumpMinMatches} on this device)`;
+    document.getElementById('effectsAutoOption').textContent =
+      `Auto (${profile.effects.animations ? 'full' : profile.effects.glow ? 'no animations' : 'reduced'})`;
+    document.getElementById('deviceInfo').textContent = device.describeDevice(profile);
+
     // Init
+    restoreDraft();
     renderPages();
     updateTimingUI();
   </script>

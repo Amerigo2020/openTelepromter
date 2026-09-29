@@ -567,6 +567,13 @@ ipcMain.on('prompter-finished', (event, result = {}) => {
   if (!result.loop) updateTrayMenu(false);
 });
 
+// A-/A+ in the prompter: the control window shows and saves the new size
+ipcMain.on('prompter-font-size', (event, size) => {
+  if (controlWindow) {
+    controlWindow.webContents.send('prompter-font-size', size);
+  }
+});
+
 ipcMain.on('save-settings', (event, settings) => {
   saveSettings(settings);
 });
