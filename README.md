@@ -28,6 +28,8 @@ The same app runs in the browser and can be added to the home screen (PWA, works
   - *Word Tracking:* Safari (iPhone, iPad) revises more words, so it tolerates more gaps and needs 4 matching words for a jump; Android's recognizer repeats earlier text in later results, which is filtered out. *Jump to other sentence after: Auto* uses these defaults.
 - **Touch controls** — tap next to the text for Pause, Restart, A−/A+ and Close; swipe to move through the text. On phones and tablets a "Tap to start" screen comes first so the browser allows the microphone.
 - Fullscreen, keeps the screen on while reading (where the browser supports it), Android's Back button closes the prompter.
+- **Floating prompter for the camera app** — *Floating Prompter · Camera* turns the current page into a small Picture-in-Picture window that stays on top of other apps. Tap *Prepare*, then *Float*, open the camera app and record while the text runs. Play/pause in the floating window. It scrolls at the Classic speed: the camera app has the microphone then, so Word Tracking is not possible. Needs Chrome on Android or Safari on iOS/iPadOS 16.4+.
+- **Speech language follows the device language** until another one is picked.
 - The script is kept on the device between visits; *Save* downloads a project file.
 - Speech recognition needs Chrome (Android, desktop) or Safari (iPhone, iPad, macOS) and an HTTPS address. Firefox falls back to Classic Scroll.
 - Desktop-only: Floating/Pinned overlay windows, External Display, Remote Connection, tray.
@@ -153,7 +155,8 @@ src/
   prompter.html    — Teleprompter overlay (display, modes, tracking)
   speech-tracker.js — Aligns recognized speech with the script (Word Tracking)
   timing.js        — Speaking-time estimates, learned pace, Reel targets
-  device.js        — Device profile: form factor, performance, speech engine
+  device.js        — Device profile: form factor, performance, speech engine, speech language
+  pip.js           — Floating prompter: renders the script as a video for Picture-in-Picture
   web/             — Web app: platform layer (replaces Electron's main process), PWA manifest, service worker, icons
 scripts/build-web.js — Builds the web app into dist-web/
 test/              — Unit tests (node --test)

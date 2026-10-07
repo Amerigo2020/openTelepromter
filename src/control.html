@@ -537,6 +537,16 @@
     /* Features that need the desktop app (windows, tray, network server) */
     body.web .desktop-only { display: none !important; }
     body.touch .keyboard-only { display: none !important; }
+    body:not(.web) .web-only { display: none !important; }
+
+    /* Floating prompter (Picture-in-Picture) */
+    .float-hint { font-size: 11px; color: var(--text-muted); line-height: 1.4; margin-bottom: 8px; }
+    .float-progress { height: 4px; background: var(--input-bg); border-radius: 2px; overflow: hidden; margin-top: 8px; display: none; }
+    .float-progress.visible { display: block; }
+    .float-progress div { height: 100%; width: 0; background: var(--accent); transition: width 0.2s; }
+    #floatVideo { display: none; width: 100%; margin-top: 8px; border-radius: 6px; background: #000; }
+    #floatVideo.visible { display: block; }
+    .float-actions { display: flex; gap: 6px; margin-top: 8px; }
 
     /* Touch screens: finger-sized targets; 16px inputs keep iOS from zooming */
     body.touch { font-size: 15px; }
@@ -921,6 +931,38 @@
         </div>
       </div>
 
+      <!-- Floating prompter for recording with the camera app -->
+      <div class="section web-only" id="floatSection">
+        <div class="section-header">
+          <span class="section-title">Floating Prompter &middot; Camera</span>
+          <button class="section-toggle" id="toggleFloat">&#9660;</button>
+        </div>
+        <div class="section-body" id="floatBody">
+          <div class="float-hint">
+            Shows the current page in a small floating window on top of other apps
+            (Picture-in-Picture). Open your camera app and record while the text runs.
+            Scrolls at the speed set above; play/pause in the floating window.
+          </div>
+          <div class="controls-grid">
+            <div class="control-group">
+              <span class="control-label">Text in window</span>
+              <select id="floatSize">
+                <option value="small">Small (more words)</option>
+                <option value="medium" selected>Medium</option>
+                <option value="large">Large (fewer words)</option>
+              </select>
+            </div>
+          </div>
+          <div class="float-actions">
+            <button class="btn btn-secondary" id="floatPrepareBtn">&#9881; Prepare</button>
+            <button class="btn btn-primary" id="floatOpenBtn" disabled>&#10697; Float</button>
+          </div>
+          <div class="float-progress" id="floatProgress"><div></div></div>
+          <video id="floatVideo" playsinline muted controls></video>
+          <div class="device-info" id="floatStatus"></div>
+        </div>
+      </div>
+
       <!-- Actions -->
       <div class="actions">
         <button class="btn btn-primary" id="startBtn">&#9654; Start</button>
@@ -957,6 +999,7 @@
     const { ipcRenderer } = require('electron');
     const path = require('path');
     const timing = require('./timing');
+    const pip = require('./pip');
     const device = require('./device');
 
     // ==========================================
@@ -979,6 +1022,13 @@
     }
     updateLayout();
     window.addEventListener('resize', updateLayout);
+
+    // Speech language follows the device language until the user picks one
+    (function () {
+      const select = document.getElementById('speechLang');
+      const codes = Array.from(select.options).map(o => o.value);
+      select.value = device.pickSpeechLang(codes, device.browserEnv().languages);
+    })();
 
     // ==========================================
     // STATE
@@ -1464,6 +1514,89 @@
       section.classList.toggle('collapsed');
       this.textContent = section.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
     });
+
+    // ==========================================
+    // FLOATING PROMPTER (Picture-in-Picture)
+    // ==========================================
+    document.getElementById('toggleFloat').addEventListener('click', function () {
+      const section = this.closest('.section');
+      section.classList.toggle('collapsed');
+      this.textContent = section.classList.contains('collapsed') ? '\u25B6' : '\u25BC';
+    });
+
+    const floatPrepareBtn = document.getElementById('floatPrepareBtn');
+    const floatOpenBtn = document.getElementById('floatOpenBtn');
+    const floatVideo = document.getElementById('floatVideo');
+    const floatProgress = document.getElementById('floatProgress');
+    const floatStatus = document.getElementById('floatStatus');
+    let floatUrl = null;
+    let floatSignature = null;
+
+    function floatOptions() {
+      return {
+        text: scriptText.value,
+        size: document.getElementById('floatSize').value,
+        wps: parseFloat(document.getElementById('speed').value) || 3,
+        highlightColor,
+        fontFamily: document.getElementById('fontFamily').value,
+      };
+    }
+
+    if (isWeb && !pip.isSupported()) {
+      floatPrepareBtn.disabled = true;
+      floatStatus.textContent = 'This browser cannot create the floating window. Use Chrome on Android or Safari on iOS 16.4 or newer.';
+    }
+
+    floatPrepareBtn.addEventListener('click', async () => {
+      const options = floatOptions();
+      if (!pip.splitWords(options.text).length) {
+        floatStatus.textContent = 'Write or open a script first.';
+        return;
+      }
+      floatPrepareBtn.disabled = true;
+      floatOpenBtn.disabled = true;
+      floatProgress.classList.add('visible');
+      floatStatus.textContent = 'Preparing...';
+      const bar = floatProgress.firstElementChild;
+      try {
+        const scene = pip.buildScene(options.text, options, document.createElement('canvas').getContext('2d'));
+        const blob = await pip.renderVideo(scene, { onProgress: p => { bar.style.width = Math.round(p * 100) + '%'; } });
+        if (floatUrl) URL.revokeObjectURL(floatUrl);
+        floatUrl = URL.createObjectURL(blob);
+        floatVideo.src = floatUrl;
+        floatVideo.classList.add('visible');
+        floatSignature = JSON.stringify(options);
+        floatOpenBtn.disabled = false;
+        const total = Math.round(scene.duration);
+        floatStatus.textContent = `Ready: ${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')} min. Tap Float, then open your camera app.`;
+      } catch (e) {
+        floatStatus.textContent = 'Could not prepare the floating window: ' + e.message;
+      } finally {
+        floatPrepareBtn.disabled = false;
+        floatProgress.classList.remove('visible');
+        bar.style.width = '0';
+      }
+    });
+
+    floatOpenBtn.addEventListener('click', async () => {
+      if (floatSignature !== JSON.stringify(floatOptions())) {
+        floatStatus.textContent = 'Script or settings changed. Tap Prepare again.';
+        floatOpenBtn.disabled = true;
+        return;
+      }
+      try {
+        floatVideo.currentTime = 0;
+        const opened = await pip.openFloating(floatVideo);
+        floatStatus.textContent = opened
+          ? 'Floating. Switch to your camera app; play/pause in the small window.'
+          : 'Floating windows are not available here. Use the Picture-in-Picture button of the video.';
+      } catch (e) {
+        floatStatus.textContent = 'Could not open the floating window: ' + e.message;
+      }
+    });
+
+    // Closing the floating window stops the text
+    floatVideo.addEventListener('leavepictureinpicture', () => floatVideo.pause());
 
     // Auto next page toggle
     document.getElementById('autoNextPage').addEventListener('change', function () {
