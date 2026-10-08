@@ -10,7 +10,7 @@ const WEB = path.join(SRC, 'web');
 const OUT = path.join(ROOT, 'dist-web');
 
 // App modules shared with the desktop app, loaded through require()
-const MODULES = ['speech-tracker', 'timing', 'device'];
+const MODULES = ['speech-tracker', 'timing', 'device', 'pip'];
 const MARKER = '<!-- web:head -->';
 
 const CONTROL_HEAD = [
@@ -23,6 +23,7 @@ const CONTROL_HEAD = [
   '<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">',
   '<link rel="icon" href="icons/icon-192.png">',
   '<script src="jszip.min.js"></script>',
+  '<script src="mp4-muxer.js"></script>',
   '<script src="app.js"></script>',
 ].join('\n  ');
 const PROMPTER_HEAD = '<script src="app.js"></script>';
@@ -49,6 +50,7 @@ const files = {
   'prompter.html': page('prompter.html', PROMPTER_HEAD),
   'app.js': bundle,
   'jszip.min.js': read(require.resolve('jszip/dist/jszip.min.js')),
+  'mp4-muxer.js': read(path.join(path.dirname(require.resolve('mp4-muxer')), 'mp4-muxer.js')),
   'manifest.webmanifest': read(path.join(WEB, 'manifest.webmanifest')),
 };
 for (const [name, content] of Object.entries(files)) {

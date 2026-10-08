@@ -15,8 +15,9 @@
   "author": "openTeleprompter",
   "license": "MIT",
   "dependencies": {
-    "ws": "^8.16.0",
-    "jszip": "^3.10.1"
+    "jszip": "^3.10.1",
+    "mp4-muxer": "^5.2.2",
+    "ws": "^8.16.0"
   },
   "devDependencies": {
     "electron": "^35.7.5",
@@ -29,11 +30,17 @@
       "output": "dist"
     },
     "win": {
-      "target": ["nsis", "portable"],
+      "target": [
+        "nsis",
+        "portable"
+      ],
       "icon": "assets/icon.ico"
     },
     "linux": {
-      "target": ["AppImage", "deb"],
+      "target": [
+        "AppImage",
+        "deb"
+      ],
       "icon": "assets/icon.png",
       "category": "Utility"
     }

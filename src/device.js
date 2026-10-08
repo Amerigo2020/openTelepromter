@@ -113,6 +113,29 @@ function describeDevice(profile) {
   return `${FORM_FACTOR_LABELS[profile.formFactor]} · ${OS_LABELS[profile.os]} · ${ENGINE_LABELS[profile.engine]} · ${perf} performance`;
 }
 
+// Picks the speech language that best matches the device languages.
+// available: offered codes ('de-DE', ...); preferred: navigator.languages
+// Exact match first ('de-AT' -> 'de-AT'), then same language ('de-AT' -> 'de-DE');
+// Chinese also by script/region, so zh-HK and zh-Hant read as traditional.
+function pickSpeechLang(available, preferred, fallback = 'en-US') {
+  const lower = available.map(code => code.toLowerCase());
+  for (const raw of preferred || []) {
+    const lang = String(raw || '').replace('_', '-').toLowerCase();
+    if (!lang) continue;
+    const exact = lower.indexOf(lang);
+    if (exact !== -1) return available[exact];
+    const base = lang.split('-')[0];
+    if (base === 'zh') {
+      const traditional = /-(tw|hk|mo|hant)\b/.test(lang);
+      const wanted = traditional ? 'zh-tw' : 'zh-cn';
+      if (lower.includes(wanted)) return available[lower.indexOf(wanted)];
+    }
+    const sameLang = lower.findIndex(code => code.split('-')[0] === base);
+    if (sameLang !== -1) return available[sameLang];
+  }
+  return available.includes(fallback) ? fallback : available[0];
+}
+
 // Reads the environment of the current browser window
 function browserEnv() {
   if (typeof window === 'undefined') return {};
@@ -126,6 +149,9 @@ function browserEnv() {
     hardwareConcurrency: navigator.hardwareConcurrency,
     deviceMemory: navigator.deviceMemory,
     reducedMotion: media('(prefers-reduced-motion: reduce)'),
+    languages: navigator.languages && navigator.languages.length
+      ? Array.from(navigator.languages)
+      : [navigator.language].filter(Boolean),
   };
 }
 
@@ -134,5 +160,6 @@ module.exports = {
   effectsFor,
   applyOverrides,
   describeDevice,
+  pickSpeechLang,
   browserEnv,
 };

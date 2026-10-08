@@ -1,6 +1,6 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
-const { detectDevice, applyOverrides, describeDevice } = require('../src/device');
+const { detectDevice, applyOverrides, describeDevice, pickSpeechLang } = require('../src/device');
 
 const UA = {
   iphone: 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1',
@@ -84,4 +84,19 @@ test('tunes word tracking to the speech engine', () => {
 test('describes the detected device', () => {
   const ipad = detectDevice({ userAgent: UA.ipad, width: 820, height: 1180, maxTouchPoints: 5 });
   assert.equal(describeDevice(ipad), 'Tablet · iOS/iPadOS · Safari/WebKit · medium performance');
+});
+
+test('picks the speech language from the device languages', () => {
+  const codes = ['en-US', 'en-GB', 'de-DE', 'fr-FR', 'pt-BR', 'zh-CN', 'zh-TW'];
+  assert.equal(pickSpeechLang(codes, ['de-DE', 'en-US']), 'de-DE');
+  assert.equal(pickSpeechLang(codes, ['de-AT']), 'de-DE');
+  assert.equal(pickSpeechLang(codes, ['de']), 'de-DE');
+  assert.equal(pickSpeechLang(codes, ['en-GB']), 'en-GB');
+  assert.equal(pickSpeechLang(codes, ['pt-PT']), 'pt-BR');
+  assert.equal(pickSpeechLang(codes, ['zh-HK']), 'zh-TW');
+  assert.equal(pickSpeechLang(codes, ['zh-Hans-CN']), 'zh-CN');
+  // First supported preference wins, unsupported ones are skipped
+  assert.equal(pickSpeechLang(codes, ['xx-XX', 'fr-CA', 'de-DE']), 'fr-FR');
+  assert.equal(pickSpeechLang(codes, []), 'en-US');
+  assert.equal(pickSpeechLang(codes, undefined), 'en-US');
 });
