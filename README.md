@@ -172,4 +172,4 @@ test/              — Unit tests (node --test)
 
 ## License
 
-MIT
+MIT. See [LICENSE](LICENSE).
